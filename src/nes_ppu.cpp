@@ -26,6 +26,7 @@ SDL_Window* window = nullptr;
 SDL_Texture* texture = nullptr;
 
 bool PPU::InitSDL(SDL_Renderer * renderer) {
+    PaletteMode = 0;
     texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
                                 SDL_TEXTUREACCESS_STREAMING, NES_WIDTH, NES_HEIGHT);
     return texture != nullptr;
@@ -37,7 +38,7 @@ void PPU::ShutdownSDL() {
 }
 
 // dummy, no finish for now
-const uint32_t nesPalette[64] = {
+const uint32_t nesPaletteNTSC[64] = {
     0xFF757575,0xFF271B8F,0xFF0000AB,0xFF47009F,0xFF8F0077,0xFFAB0013,0xFFA70000,0xFF7F0B00,
     0xFF432F00,0xFF004700,0xFF005100,0xFF003F17,0xFF1B3F5F,0xFF000000,0xFF000000,0xFF000000,
     0xFFBCBCBC,0xFF0073EF,0xFF233BEF,0xFF8300F3,0xFFBF00BF,0xFFE7005B,0xFFDB2B00,0xFFCB4F0F,
@@ -48,8 +49,40 @@ const uint32_t nesPalette[64] = {
     0xFFFFE7A3,0xFFE3FFA3,0xFFABF3BF,0xFFB3FFCF,0xFF9FFFF3,0xFF000000,0xFF000000,0xFF000000
 };
 
-void PPU::Render(SDL_Renderer * renderer) {
+const uint32_t nesPalettePAL[64] = {
+    0xFF6D6D6D,0xFF002492,0xFF0010A8,0xFF440096,0xFFA80020,0xFFA81000,0xFF881400,0xFF503000,
+    0xFF007008,0xFF006010,0xFF005840,0xFF004058,0xFF000000,0xFF000000,0xFF000000,0xFF000000,
+    0xFFB6B6B6,0xFF2048D8,0xFF4030E0,0xFF9020CC,0xFFE01070,0xFFE03020,0xFFC84000,0xFF886000,
+    0xFF208800,0xFF00A000,0xFF00A848,0xFF008088,0xFF000000,0xFF000000,0xFF000000,0xFF000000,
+    0xFFFFFFFF,0xFF60A0FF,0xFF8080FF,0xFFC060FF,0xFFFF60E0,0xFFFF60A0,0xFFFF8040,0xFFFFA020,
+    0xFFE0C020,0xFFA0E020,0xFF40E060,0xFF20C0C0,0xFF40A0E0,0xFF000000,0xFF000000,0xFF000000,
+    0xFFFFFFFF,0xFFA0D0FF,0xFFC0B0FF,0xFFE0A0FF,0xFFFFA0F0,0xFFFFA0C0,0xFFFFC0A0,0xFFFFE080,
+    0xFFE0E060,0xFFC0F060,0xFF80F0A0,0xFF60E0E0,0xFF80C0F0,0xFF000000,0xFF000000,0xFF000000
+};
+
+
+void PPU::Render(SDL_Renderer* renderer) {
     uint32_t pixels[NES_WIDTH * NES_HEIGHT];
+    uint8_t palOffset = 4;
+
+    if (UseRandPalIndex)
+        palOffset = RanPalIndex;
+
+    uint32_t nesPalette[64] = {0};
+    const uint32_t* activePalette = (PaletteMode == 0) ? nesPaletteNTSC : nesPalettePAL;
+    memcpy(nesPalette, activePalette, sizeof(nesPalette));
+
+    if (PaletteMode == 1) {
+        for (int i = 0; i < 64; i++) {
+            uint8_t r = (nesPalette[i] >> 16) & 0xFF;
+            uint8_t g = (nesPalette[i] >> 8) & 0xFF;
+            uint8_t b = (nesPalette[i] >> 0) & 0xFF;
+            r = static_cast<uint8_t>(r * 0.95f);
+            g = static_cast<uint8_t>(g * 0.95f);
+            b = static_cast<uint8_t>(b * 0.98f);
+            nesPalette[i] = (r << 16) | (g << 8) | b;
+        }
+    }
 
     for (int screenY = 0; screenY < NES_HEIGHT; screenY++) {
         for (int screenX = 0; screenX < NES_WIDTH; screenX++) {
@@ -73,7 +106,7 @@ void PPU::Render(SDL_Renderer * renderer) {
 
             int bit = 7 - fineX;
             int twoBit = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
-            uint8_t palIndex = twoBit ? paletteRAM[twoBit + pair * 4] : paletteRAM[0];
+            uint8_t palIndex = twoBit ? paletteRAM[twoBit + pair * palOffset] : paletteRAM[0];
             uint32_t color = nesPalette[palIndex & 0x3F];
 
             pixels[screenY * NES_WIDTH + screenX] = color;
@@ -108,8 +141,7 @@ void PPU::Render(SDL_Renderer * renderer) {
                 int py = spriteY + row;
                 if (px < 0 || px >= NES_WIDTH || py < 0 || py >= NES_HEIGHT) continue;
 
-                uint8_t palEntry = paletteRAM[0x10 + (paletteIndex * 4) + colorId] & 0x3F;
-
+                uint8_t palEntry = paletteRAM[(palOffset * 4) + (paletteIndex * 4) + colorId] & 0x3F;
                 pixels[py * NES_WIDTH + px] = nesPalette[palEntry];
             }
         }
@@ -118,5 +150,5 @@ void PPU::Render(SDL_Renderer * renderer) {
     SDL_UpdateTexture(texture, nullptr, pixels, NES_WIDTH * sizeof(uint32_t));
     SDL_RenderClear(renderer);
     SDL_RenderCopy(renderer, texture, nullptr, nullptr);
-   // SDL_RenderPresent(renderer);
+    // SDL_RenderPresent(renderer);
 }

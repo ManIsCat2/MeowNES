@@ -11,6 +11,10 @@
 NesROM globalROM;
 
 bool romIsLoaded = false;
+static bool fullscreen = false;
+static bool unlimitFPS = false;
+
+static const char* NesPalettes[] = { "NTSC", "PAL" };
 
 int main(int argc, char* argv[]) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -23,7 +27,7 @@ int main(int argc, char* argv[]) {
         800, 600, SDL_WINDOW_SHOWN);
 
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1,
-        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+        SDL_RENDERER_ACCELERATED);
 
     SDL_Surface* icon = IMG_Load("gui/ico.png");
     if (!icon) {
@@ -109,14 +113,25 @@ int main(int argc, char* argv[]) {
 
                 ImGui::EndMenu();
             }
+            if (ImGui::BeginMenu("PPU")) {
+                if (ImGui::BeginMenu("Palettes")) {
+                    if (ImGui::Checkbox("Random Palettes", &ppu.UseRandPalIndex)) {
+                        ppu.RanPalIndex = rand() % 16;
+                    }
+                    ImGui::SetNextItemWidth(70);
+                    ImGui::Combo("Palette System", &ppu.PaletteMode, NesPalettes, IM_ARRAYSIZE(NesPalettes));
+                    ImGui::EndMenu();
+                }
+                ImGui::EndMenu();
+            }
 
             if (ImGui::BeginMenu("Settings")) {
                 if (ImGui::BeginMenu("Graphics")) {
-                    static bool fullscreen = false;
                     if (ImGui::Checkbox("Fullscreen", &fullscreen)) {
                         if (fullscreen) SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
                         else SDL_SetWindowFullscreen(window, 0);
                     }
+                    ImGui::Checkbox("Unlimited FPS", &unlimitFPS);
                     ImGui::EndMenu();
                 }
                 ImGui::EndMenu();
@@ -144,6 +159,10 @@ int main(int argc, char* argv[]) {
         ImGui::Render();
         ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), renderer);
         SDL_RenderPresent(renderer);
+
+        if (!unlimitFPS) {
+            SDL_Delay(16);
+        }
     }
 
     ImGui_ImplSDLRenderer2_Shutdown();

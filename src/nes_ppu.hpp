@@ -38,6 +38,10 @@ public:
     uint16_t scrollY = 0;  // vertical scroll in pixels
     uint8_t scrollFineX = 0; // 0-7, fine pixel shift inside a tile
 
+    int PaletteMode = 0;
+    bool UseRandPalIndex = false;
+    uint8_t RanPalIndex = 4;
+
     void Step();
 
     void LoadCHRROM(const uint8_t* chrData, int chrSize);
