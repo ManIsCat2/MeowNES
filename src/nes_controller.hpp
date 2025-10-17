@@ -1,6 +1,6 @@
 #pragma once
 
-#include "nes_cpu.h"
+#include "nes_cpu.hpp"
 
 class Controller {
 public:
@@ -11,4 +11,4 @@ public:
 
 extern Controller controllers[2];
 
-void update_controllers(void);
+void UpdateControllers(void);

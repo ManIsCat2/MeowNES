@@ -1,37 +1,37 @@
-#include "nes_ppu.h"
-#include "nes_cpu.h"
+#include "nes_ppu.hpp"
+#include "nes_cpu.hpp"
 #include <cstring>
 
 PPU ppu;
 
-void PPU::step() {
-    dot++;
-    if (dot > 341) {
-        dot = 0;
-        scanline++;
-        if (scanline == 241) vblank = true;
-        if (scanline == 261) vblank = false;
-        if (scanline > 261) {
-            scanline = 0;
+void PPU::Step() {
+    Dot++;
+    if (Dot > 341) {
+        Dot = 0;
+        ScanLine++;
+        if (ScanLine == 241) Vblank = true;
+        if (ScanLine == 261) Vblank = false;
+        if (ScanLine > 261) {
+            ScanLine = 0;
         }
     }
 }
 
-void PPU::loadCHR(const uint8_t* chrData, int chrSize) {
+void PPU::LoadCHRROM(const uint8_t* chrData, int chrSize) {
     if (chrSize > 0x2000) chrSize = 0x2000;
-    std::memcpy(&chrROM[0x0000], chrData, chrSize);
+    std::memcpy(&ChrROM[0x0000], chrData, chrSize);
 }
 
 SDL_Window* window = nullptr;
 SDL_Texture* texture = nullptr;
 
-bool PPU::initSDL(SDL_Renderer * renderer) {
+bool PPU::InitSDL(SDL_Renderer * renderer) {
     texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
                                 SDL_TEXTUREACCESS_STREAMING, NES_WIDTH, NES_HEIGHT);
     return texture != nullptr;
 }
 
-void PPU::shutdownSDL() {
+void PPU::ShutdownSDL() {
     if (texture) SDL_DestroyTexture(texture);
     SDL_Quit();
 }
@@ -48,12 +48,11 @@ const uint32_t nesPalette[64] = {
     0xFFFFE7A3,0xFFE3FFA3,0xFFABF3BF,0xFFB3FFCF,0xFF9FFFF3,0xFF000000,0xFF000000,0xFF000000
 };
 
-void PPU::renderPPU(SDL_Renderer * renderer) {
+void PPU::Render(SDL_Renderer * renderer) {
     uint32_t pixels[NES_WIDTH * NES_HEIGHT];
 
     for (int screenY = 0; screenY < NES_HEIGHT; screenY++) {
         for (int screenX = 0; screenX < NES_WIDTH; screenX++) {
-
             int scrolledX = (screenX + scrollX) % 256;
             int scrolledY = (screenY + scrollY) % 240;
             int tileX = scrolledX / 8;
@@ -61,14 +60,14 @@ void PPU::renderPPU(SDL_Renderer * renderer) {
             int fineX = scrolledX % 8;
             int fineY = scrolledY % 8;
 
-            uint8_t tileIndex = ppu.VRAM[tileY * 32 + tileX];
+            uint8_t tileIndex = VRAM[tileY * 32 + tileX];
 
             int useSecond = BGPatternTable ? 0x1000 : 0x0000;
-            uint8_t lo = ppu.chrROM[tileIndex * 16 + fineY + useSecond];
-            uint8_t hi = ppu.chrROM[tileIndex * 16 + fineY + 8 + useSecond];
+            uint8_t lo = ChrROM[tileIndex * 16 + fineY + useSecond];
+            uint8_t hi = ChrROM[tileIndex * 16 + fineY + 8 + useSecond];
 
             uint8_t attrOffset = (tileX / 4) + (tileY / 4) * 8;
-            uint8_t attributes = ppu.VRAM[0x3C0 + attrOffset];
+            uint8_t attributes = VRAM[0x3C0 + attrOffset];
             uint8_t quadrant = ((tileX / 2) & 1) + (((tileY / 2) & 1) * 2);
             uint8_t pair = (attributes >> (quadrant * 2)) & 3;
 
@@ -91,7 +90,7 @@ void PPU::renderPPU(SDL_Renderer * renderer) {
         bool flipV = attr & 0x80;
         uint8_t paletteIndex = attr & 0x03;
         uint16_t spriteTable = spritePatternTable ? 0x1000 : 0x0000;
-        const uint8_t* tileData = &chrROM[spriteTable + tile * 16];
+        const uint8_t* tileData = &ChrROM[spriteTable + tile * 16];
 
         for (int row = 0; row < 8; row++) {
             int tileRow = flipV ? 7 - row : row;

@@ -1,5 +1,5 @@
-#include "nes_cpu.h"
-#include "nes_controller.h"
+#include "nes_cpu.hpp"
+#include "nes_controller.hpp"
 
 //#define NES_DEBUG
 
@@ -18,18 +18,18 @@ void CPU::run(uint32_t maxCycles) {
     //uint32_t frame_ppu_counter = 0;
 
     while (cycles_run < maxCycles) {
-        if (!romIsLoaded) return;
+        if (!romIsLoaded || CPUPaused) return;
         bool prevNMIDetect = NMIDetector;
-        NMIDetector = ppu.vblank && ppu.enableNMI;
+        NMIDetector = ppu.Vblank && ppu.enableNMI;
 
-        if (!prevNMIDetect && NMIDetector) handleNMI();
+        if (!prevNMIDetect && NMIDetector) HandleNMI();
 
         uint8_t opcode = fetch();
         execute(opcode);
 
-        ppu.step();
-        ppu.step();
-        ppu.step();
+        ppu.Step();
+        ppu.Step();
+        ppu.Step();
 
         cycles_run += cycles;
         cycles = 0;
@@ -63,7 +63,7 @@ void CPU::execute(uint8_t opcode)
 
     auto lda = [this](uint8_t value, int baseCycles) {
         A = value;
-        setZN(A);
+        SetZN(A);
         cycles += baseCycles;
     };
 
@@ -76,7 +76,7 @@ void CPU::execute(uint8_t opcode)
 
     auto ld_reg = [this](uint8_t &reg, uint8_t value, int baseCycles) {
         reg = value;
-        setZN(reg);
+        SetZN(reg);
         cycles += baseCycles;
     };
 
@@ -96,7 +96,7 @@ void CPU::execute(uint8_t opcode)
         uint8_t value = read(addr);
         value++;
         write(addr, value);
-        setZN(value);
+        SetZN(value);
         cycles += baseCycles;
     };
 
@@ -104,13 +104,13 @@ void CPU::execute(uint8_t opcode)
         uint8_t value = read(addr);
         value--;
         write(addr, value);
-        setZN(value);
+        SetZN(value);
         cycles += baseCycles;
     };
 
     auto adc_op = [this](uint8_t value, int baseCycles) {
         uint16_t sum = A + value + (P & 0x01);
-        setZN(sum & 0xFF);
+        SetZN(sum & 0xFF);
         if (sum > 0xFF) P |= 0x01; else P &= ~0x01;
         if (((A ^ sum) & (value ^ sum) & 0x80) != 0) P |= 0x40; else P &= ~0x40;
         A = sum & 0xFF;
@@ -120,7 +120,7 @@ void CPU::execute(uint8_t opcode)
     auto sbc_op = [this](uint8_t value, int baseCycles) {
         value ^= 0xFF; // invert for SBC
         uint16_t sum = A + value + (P & 0x01);
-        setZN(sum & 0xFF);
+        SetZN(sum & 0xFF);
         if (sum > 0xFF) P |= 0x01; else P &= ~0x01;
         if (((A ^ sum) & (value ^ sum) & 0x80) != 0) P |= 0x40; else P &= ~0x40;
         A = sum & 0xFF;
@@ -129,20 +129,20 @@ void CPU::execute(uint8_t opcode)
 
     auto and_op = [this](uint8_t value, int baseCycles) {
         A &= value;
-        setZN(A);
+        SetZN(A);
         cycles += baseCycles;
     };
 
     auto ora_op = [this](uint8_t value, int baseCycles) {
         A |= value;
-        setZN(A);
+        SetZN(A);
         cycles += baseCycles;
     };
 
     auto lsr = [this](uint8_t &reg) {
         P = (reg & 0x01) ? (P | 0x01) : (P & ~0x01);
         reg >>= 1;
-        setZN(reg);
+        SetZN(reg);
     };
 
     auto lsr_mem = [this](uint16_t addr, int baseCycles) {
@@ -150,7 +150,7 @@ void CPU::execute(uint8_t opcode)
         P = (value & 0x01) ? (P | 0x01) : (P & ~0x01);
         value >>= 1;
         write(addr, value);
-        setZN(value);
+        SetZN(value);
         cycles += baseCycles;
     };
 
@@ -158,7 +158,7 @@ void CPU::execute(uint8_t opcode)
         uint8_t old = reg;
         reg = (reg << 1) | (P & 0x01);
         P = (old & 0x80) ? (P | 0x01) : (P & ~0x01);
-        setZN(reg);
+        SetZN(reg);
     };
 
     auto rol_mem = [this](uint16_t addr, int baseCycles) {
@@ -167,7 +167,7 @@ void CPU::execute(uint8_t opcode)
         value = (value << 1) | (P & 0x01);
         P = (old & 0x80) ? (P | 0x01) : (P & ~0x01);
         write(addr, value);
-        setZN(value);
+        SetZN(value);
         cycles += baseCycles;
     };
 
@@ -176,7 +176,7 @@ void CPU::execute(uint8_t opcode)
         uint8_t carryIn = (P & 0x01) ? 0x80 : 0x00;
         P = (old & 0x01) ? (P | 0x01) : (P & ~0x01);
         reg = (old >> 1) | carryIn;
-        setZN(reg);
+        SetZN(reg);
     };
 
     auto ror_mem = [this](uint16_t addr, int baseCycles) {
@@ -185,14 +185,14 @@ void CPU::execute(uint8_t opcode)
         P = (value & 0x01) ? (P | 0x01) : (P & ~0x01);
         value = (value >> 1) | carryIn;
         write(addr, value);
-        setZN(value);
+        SetZN(value);
         cycles += baseCycles;
     };
 
     auto asl = [this](uint8_t &reg) {
         P = (reg & 0x80) ? (P | 0x01) : (P & ~0x01);
         reg <<= 1;
-        setZN(reg);
+        SetZN(reg);
     };
 
     auto asl_mem = [this](uint16_t addr, int baseCycles) {
@@ -200,13 +200,13 @@ void CPU::execute(uint8_t opcode)
         P = (value & 0x80) ? (P | 0x01) : (P & ~0x01);
         value <<= 1;
         write(addr, value);
-        setZN(value);
+        SetZN(value);
         cycles += baseCycles;
     };
 
     auto cmp_reg = [this](uint8_t reg, uint8_t value, int baseCycles) {
         uint8_t r = reg - value;
-        setZN(r);
+        SetZN(r);
         P = (reg >= value ? P | 0x01 : P & ~0x01);
         cycles += baseCycles;
     };
@@ -220,7 +220,7 @@ void CPU::execute(uint8_t opcode)
 
         A |= value;
 
-        setZN(A);
+        SetZN(A);
     };
 
     auto sre = [this](uint16_t addr) {
@@ -231,7 +231,7 @@ void CPU::execute(uint8_t opcode)
         write(addr, value);
 
         A ^= value;
-        setZN(A);
+        SetZN(A);
         if (oldBit0) P |= 0x01; else P &= ~0x01;
     };
 
@@ -248,7 +248,7 @@ void CPU::execute(uint8_t opcode)
         else P &= ~0x40;
 
         A = sum & 0xFF;
-        setZN(A);
+        SetZN(A);
     };
 
     auto sax = [this](uint16_t addr) {
@@ -258,7 +258,7 @@ void CPU::execute(uint8_t opcode)
     auto lax = [this](uint8_t value) {
         A = value;
         X = value;
-        setZN(A);
+        SetZN(A);
     };
 
     auto dcp = [this](uint16_t addr) {
@@ -268,7 +268,7 @@ void CPU::execute(uint8_t opcode)
 
         if (A >= value) P |= 0x01; else P &= ~0x01;
 
-        setZN(result & 0xFF);
+        SetZN(result & 0xFF);
     };
 
     auto isc = [this](uint16_t addr) {
@@ -281,7 +281,7 @@ void CPU::execute(uint8_t opcode)
         if (((A ^ result) & 0x80) && ((A ^ value) & 0x80)) P |= 0x40; else P &= ~0x40;
         A = result & 0xFF;
 
-        setZN(A);
+        SetZN(A);
     };
 
     auto rla = [this](uint16_t addr) {
@@ -296,7 +296,7 @@ void CPU::execute(uint8_t opcode)
 
         A &= value;
 
-        setZN(A);
+        SetZN(A);
     };
 
 
@@ -581,31 +581,31 @@ void CPU::execute(uint8_t opcode)
     // transfer?
     case 0xAA:
         X = A;
-        setZN(X);
+        SetZN(X);
         cycles += 2;
         DEBUG_LOG2("TAX");
         break; // TAX
     case 0xA8:
         Y = A;
-        setZN(Y);
+        SetZN(Y);
         cycles += 2;
         DEBUG_LOG2("TAY");
         break; // TAY
     case 0xBA:
         X = SP;
-        setZN(X);
+        SetZN(X);
         cycles += 2;
         DEBUG_LOG2("TSX");
         break; // TSX
     case 0x8A:
         A = X;
-        setZN(A);
+        SetZN(A);
         cycles += 2;
         DEBUG_LOG2("TXA");
         break; // TXA
     case 0x98:
         A = Y;
-        setZN(A);
+        SetZN(A);
         cycles += 2;
         DEBUG_LOG2("TYA");
         break; // TYA
@@ -669,25 +669,25 @@ void CPU::execute(uint8_t opcode)
 
     case 0xE8:
         X++;
-        setZN(X);
+        SetZN(X);
         cycles += 2;
         DEBUG_LOG2("INX");
         break; // INX
     case 0xC8:
         Y++;
-        setZN(Y);
+        SetZN(Y);
         cycles += 2;
         DEBUG_LOG2("INY");
         break; // INY
     case 0xCA:
         X--;
-        setZN(X);
+        SetZN(X);
         cycles += 2;
         DEBUG_LOG2("DEX");
         break; // DEX
     case 0x88:
         Y--;
-        setZN(Y);
+        SetZN(Y);
         cycles += 2;
         DEBUG_LOG2("DEY");
         break; // DEY
@@ -942,7 +942,7 @@ void CPU::execute(uint8_t opcode)
     case 0x49: { // EOR imm
         uint8_t value = fetch();
         A ^= value;
-        setZN(A);
+        SetZN(A);
         cycles += 2;
         DEBUG_LOG("EOR imm 0x%x\n", value);
         break;
@@ -951,7 +951,7 @@ void CPU::execute(uint8_t opcode)
         uint16_t addr = fetch16();
         uint8_t value = read(addr); 
         A ^= value;
-        setZN(A);
+        SetZN(A);
         cycles += 4; 
         DEBUG_LOG("EOR abs 0x%04X\n", addr);
         break;
@@ -961,7 +961,7 @@ void CPU::execute(uint8_t opcode)
         uint16_t effective = addr + X;
         uint8_t value = read(effective);
         A ^= value;
-        setZN(A);
+        SetZN(A);
         cycles += 4;
         if ((addr & 0xFF00) != (effective & 0xFF00)) cycles++;
         DEBUG_LOG("EOR X abs 0x%04X\n", addr);
@@ -970,7 +970,7 @@ void CPU::execute(uint8_t opcode)
     case 0x45: { // EOR zero-page
         uint8_t addr = fetch();
         A ^= read(addr);
-        setZN(A);
+        SetZN(A);
         cycles += 3;
         DEBUG_LOG("EOR zp 0x%x\n", addr);
         break;
@@ -980,7 +980,7 @@ void CPU::execute(uint8_t opcode)
         uint8_t addr = (zp + X) & 0xFF;
         uint8_t value = read(addr);
         A ^= value;
-        setZN(A);
+        SetZN(A);
         cycles += 4;
         DEBUG_LOG("EOR X zp 0x%02X\n", zp);
         break;
@@ -991,7 +991,7 @@ void CPU::execute(uint8_t opcode)
         uint16_t effective = base + Y;
         uint8_t value = read(effective);
         A ^= value;
-        setZN(A);
+        SetZN(A);
         cycles += 5;
         if ((base & 0xFF00) != (effective & 0xFF00)) cycles++;
         DEBUG_LOG("EOR Y ind 0x%02X -> 0x%04X\n", zp, effective);
@@ -1129,7 +1129,7 @@ void CPU::execute(uint8_t opcode)
 
     case 0x68: // PLA
         A = pop();
-        setZN(A);
+        SetZN(A);
         cycles += 4;
         DEBUG_LOG2("PLA");
         break;
@@ -1645,7 +1645,7 @@ void CPU::execute(uint8_t opcode)
     case 0x0B: case 0x2B: { // ANC imm
         uint8_t value = fetch();
         A &= value;
-        setZN(A);
+        SetZN(A);
         if (A & 0x80) P |= 0x01; else P &= ~0x01;
         cycles += 2;
         DEBUG_LOG("ANC imm 0x%02X\n", value);
@@ -1657,7 +1657,7 @@ void CPU::execute(uint8_t opcode)
         uint8_t carryOut = A & 1;
         A >>= 1;
         if (carryOut) P |= 0x01; else P &= ~0x01;
-        setZN(A);
+        SetZN(A);
         cycles += 2;
         DEBUG_LOG("ALR imm 0x%02X\n", value);
         break;
@@ -1666,7 +1666,7 @@ void CPU::execute(uint8_t opcode)
         uint8_t value = fetch();
         A &= value;
         A = (A >> 1) | ((P & 0x01) ? 0x80 : 0x00);
-        setZN(A);
+        SetZN(A);
         uint8_t bit5 = (A >> 5) & 1;
         uint8_t bit6 = (A >> 6) & 1;
         if (bit6) P |= 0x01; else P &= ~0x01;
@@ -1679,7 +1679,7 @@ void CPU::execute(uint8_t opcode)
     case 0x8B: { // XAA imm
         uint8_t value = fetch();
         A = X & value;
-        setZN(A);
+        SetZN(A);
         cycles += 2;
         DEBUG_LOG("XAA imm 0x%02X\n", value);
         break;
@@ -1687,7 +1687,7 @@ void CPU::execute(uint8_t opcode)
     case 0xAB: { // LXA imm
         uint8_t value = fetch();
         A = (A | 0xEE) & X & value;
-        setZN(A);
+        SetZN(A);
         cycles += 2;
         DEBUG_LOG("LXA imm 0x%02X\n", value);
         break;
@@ -1697,7 +1697,7 @@ void CPU::execute(uint8_t opcode)
         uint8_t result = (A & X) - value;
         if ((A & X) >= value) P |= 0x01; else P &= ~0x01;
         X = result;
-        setZN(X);
+        SetZN(X);
         cycles += 2;
         DEBUG_LOG("AXS imm 0x%02X\n", value);
         break;
@@ -1763,7 +1763,7 @@ void CPU::execute(uint8_t opcode)
     //  DEBUG_LOG("Proccessed 0x%x\n", opcode);
 }
 
-void CPU::setZN(uint8_t value)
+void CPU::SetZN(uint8_t value)
 {
     P = (value == 0 ? P | 0x02 : P & ~0x02);
     P = (value & 0x80 ? P | 0x80 : P & ~0x80);
@@ -1779,11 +1779,11 @@ uint8_t CPU::read(uint16_t addr)
         switch (addr & 7) {
             case 2: { // PPUSTATUS
                 uint8_t status = 0;
-                status |= (ppu.vblank ? 0x80 : 0);
-                if (ppu.scanline < 240) status |= 0x40;
+                status |= (ppu.Vblank ? 0x80 : 0);
+                if (ppu.ScanLine < 240) status |= 0x40;
 
-                ppu.vblank = false;
-                ppu.writeLatch = false;
+                ppu.Vblank = false;
+                ppu.WriteLatch = false;
                 return status;
             }
 
@@ -1795,14 +1795,14 @@ uint8_t CPU::read(uint16_t addr)
                 uint8_t ret;
 
                 if (vaddr < 0x3F00) {
-                    ret = ppu.readBuf;
+                    ret = ppu.ReadBuffer;
                     uint16_t nt = vaddr & 0x0FFF;
                     if (vaddr < 0x2000)
-                        ppu.readBuf = ppu.chrROM[vaddr];
+                        ppu.ReadBuffer = ppu.ChrROM[vaddr];
                     else {
-                        if (globalROM.header[6] & 1) nt &= 0x7FF;
+                        if (globalROM.Header[6] & 1) nt &= 0x7FF;
                         else nt = (nt & 0x800) ? (nt - 0x400) : nt;
-                        ppu.readBuf = ppu.VRAM[nt];
+                        ppu.ReadBuffer = ppu.VRAM[nt];
                     }
                 } else {
                     uint16_t pal = vaddr & 0x1F;
@@ -1860,7 +1860,7 @@ void CPU::write(uint16_t addr, uint8_t value)
                 ppu.use8x16Sprites       = (value & 0x20) != 0;
                 ppu.enableNMI            = (value & 0x80) != 0;
 
-                ppu.tempVRAMAddr = (ppu.tempVRAMAddr & 0x73FF) | ((value & 0x03) << 10);
+                ppu.TempVRAMAddr = (ppu.TempVRAMAddr & 0x73FF) | ((value & 0x03) << 10);
                 break;
 
             case 1: // PPUMASK
@@ -1882,35 +1882,35 @@ void CPU::write(uint16_t addr, uint8_t value)
                 break;
 
             case 5: // PPUSCROLL
-               if (!ppu.writeLatch) {
+               if (!ppu.WriteLatch) {
                     ppu.scrollX = value; // coarseX + fineX
                     ppu.scrollFineX = value & 7; // fine pixel inside tile
                 } else {
                     ppu.scrollY = value;  // coarseY + fineY
                 }
-                ppu.writeLatch = !ppu.writeLatch;
+                ppu.WriteLatch = !ppu.WriteLatch;
                 break;
 
             case 6: // PPUADDR
-                if (!ppu.writeLatch) {
-                    ppu.tempVRAMAddr = (ppu.tempVRAMAddr & 0x00FF) | ((value & 0x3F) << 8);
+                if (!ppu.WriteLatch) {
+                    ppu.TempVRAMAddr = (ppu.TempVRAMAddr & 0x00FF) | ((value & 0x3F) << 8);
                 } else {
-                    ppu.tempVRAMAddr = (ppu.tempVRAMAddr & 0x7F00) | value;
-                    ppu.VRAMAddr = ppu.tempVRAMAddr;
+                    ppu.TempVRAMAddr = (ppu.TempVRAMAddr & 0x7F00) | value;
+                    ppu.VRAMAddr = ppu.TempVRAMAddr;
                 }
-                ppu.writeLatch = !ppu.writeLatch;
+                ppu.WriteLatch = !ppu.WriteLatch;
                 break;
 
             case 7: { // PPUDATA
                 uint16_t vaddr = ppu.VRAMAddr & 0x3FFF;
 
                 if (vaddr < 0x2000) {
-                    if (globalROM.header[5] == 0)
-                        ppu.chrROM[vaddr] = value;
+                    if (globalROM.Header[5] == 0)
+                        ppu.ChrROM[vaddr] = value;
                 }
                 else if (vaddr < 0x3F00) {
                     uint16_t nt = vaddr & 0x0FFF;
-                    if (globalROM.header[6] & 1) { // vertical mirroring
+                    if (globalROM.Header[6] & 1) { // vertical mirroring
                         nt &= 0x7FF;
                     } else { // horizontal
                         nt = (nt & 0x800) ? (nt - 0x400) : nt;

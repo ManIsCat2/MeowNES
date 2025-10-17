@@ -2,7 +2,7 @@ COMPILE_FOLDERS := src src/imgui src/imgui/backends
 TARGET := MeowNES
 BUILD_DIR := build
 CXX := clang++
-CXXFLAGS := -Wall -Wextra -O3
+CXXFLAGS := -Wall -Wextra -O3 -Iinclude
 LDFLAGS := -lSDL2 -lSDL2_image
 ifeq ($(OS),Windows_NT)
 	LDFLAGS += -lmingw32 -lSDL2main -lSDL2
