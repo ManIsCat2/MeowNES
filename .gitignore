@@ -1,0 +1,7 @@
+*.asm
+*.nes
+todo
+*.o
+build/*
+.vscode/*
+imgui.ini

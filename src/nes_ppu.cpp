@@ -1,0 +1,123 @@
+#include "nes_ppu.h"
+#include "nes_cpu.h"
+#include <cstring>
+
+PPU ppu;
+
+void PPU::step() {
+    dot++;
+    if (dot > 341) {
+        dot = 0;
+        scanline++;
+        if (scanline == 241) vblank = true;
+        if (scanline == 261) vblank = false;
+        if (scanline > 261) {
+            scanline = 0;
+        }
+    }
+}
+
+void PPU::loadCHR(const uint8_t* chrData, int chrSize) {
+    if (chrSize > 0x2000) chrSize = 0x2000;
+    std::memcpy(&chrROM[0x0000], chrData, chrSize);
+}
+
+SDL_Window* window = nullptr;
+SDL_Texture* texture = nullptr;
+
+bool PPU::initSDL(SDL_Renderer * renderer) {
+    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+                                SDL_TEXTUREACCESS_STREAMING, NES_WIDTH, NES_HEIGHT);
+    return texture != nullptr;
+}
+
+void PPU::shutdownSDL() {
+    if (texture) SDL_DestroyTexture(texture);
+    SDL_Quit();
+}
+
+// dummy, no finish for now
+const uint32_t nesPalette[64] = {
+    0xFF757575,0xFF271B8F,0xFF0000AB,0xFF47009F,0xFF8F0077,0xFFAB0013,0xFFA70000,0xFF7F0B00,
+    0xFF432F00,0xFF004700,0xFF005100,0xFF003F17,0xFF1B3F5F,0xFF000000,0xFF000000,0xFF000000,
+    0xFFBCBCBC,0xFF0073EF,0xFF233BEF,0xFF8300F3,0xFFBF00BF,0xFFE7005B,0xFFDB2B00,0xFFCB4F0F,
+    0xFF8B7300,0xFF009F0F,0xFF00AB00,0xFF00933B,0xFF00838B,0xFF000000,0xFF000000,0xFF000000,
+    0xFFFFFFFF,0xFF3FBFFF,0xFF5F97FF,0xFFA78BFD,0xFFF77BFF,0xFFFF77B7,0xFFFF7763,0xFFFF9B3B,
+    0xFFF3BF3F,0xFF83D313,0xFF4FDF4B,0xFF58F898,0xFF00EBDB,0xFF000000,0xFF000000,0xFF000000,
+    0xFFFFFFFF,0xFFA7E7FF,0xFFC7D7FF,0xFFD7CBFF,0xFFFFC7FF,0xFFFFC7DB,0xFFFFBFB3,0xFFFFDBAB,
+    0xFFFFE7A3,0xFFE3FFA3,0xFFABF3BF,0xFFB3FFCF,0xFF9FFFF3,0xFF000000,0xFF000000,0xFF000000
+};
+
+void PPU::renderPPU(SDL_Renderer * renderer) {
+    uint32_t pixels[NES_WIDTH * NES_HEIGHT];
+
+    for (int screenY = 0; screenY < NES_HEIGHT; screenY++) {
+        for (int screenX = 0; screenX < NES_WIDTH; screenX++) {
+
+            int scrolledX = (screenX + scrollX) % 256;
+            int scrolledY = (screenY + scrollY) % 240;
+            int tileX = scrolledX / 8;
+            int tileY = scrolledY / 8;
+            int fineX = scrolledX % 8;
+            int fineY = scrolledY % 8;
+
+            uint8_t tileIndex = ppu.VRAM[tileY * 32 + tileX];
+
+            int useSecond = BGPatternTable ? 0x1000 : 0x0000;
+            uint8_t lo = ppu.chrROM[tileIndex * 16 + fineY + useSecond];
+            uint8_t hi = ppu.chrROM[tileIndex * 16 + fineY + 8 + useSecond];
+
+            uint8_t attrOffset = (tileX / 4) + (tileY / 4) * 8;
+            uint8_t attributes = ppu.VRAM[0x3C0 + attrOffset];
+            uint8_t quadrant = ((tileX / 2) & 1) + (((tileY / 2) & 1) * 2);
+            uint8_t pair = (attributes >> (quadrant * 2)) & 3;
+
+            int bit = 7 - fineX;
+            int twoBit = ((hi >> bit) & 1) << 1 | ((lo >> bit) & 1);
+            uint8_t palIndex = twoBit ? paletteRAM[twoBit + pair * 4] : paletteRAM[0];
+            uint32_t color = nesPalette[palIndex & 0x3F];
+
+            pixels[screenY * NES_WIDTH + screenX] = color;
+        }
+    }
+
+    for (int i = 0; i < 64; i++) {
+        int spriteY = OAM[i * 4 + 0] + 1;
+        int tile = OAM[i * 4 + 1];
+        int attr = OAM[i * 4 + 2];
+        int spriteX = OAM[i * 4 + 3];
+
+        bool flipH = attr & 0x40;
+        bool flipV = attr & 0x80;
+        uint8_t paletteIndex = attr & 0x03;
+        uint16_t spriteTable = spritePatternTable ? 0x1000 : 0x0000;
+        const uint8_t* tileData = &chrROM[spriteTable + tile * 16];
+
+        for (int row = 0; row < 8; row++) {
+            int tileRow = flipV ? 7 - row : row;
+            uint8_t plane0 = tileData[tileRow];
+            uint8_t plane1 = tileData[tileRow + 8];
+
+            for (int col = 0; col < 8; col++) {
+                int tileCol = flipH ? 7 - col : col;
+                uint8_t colorLow  = (plane0 >> (7 - tileCol)) & 1;
+                uint8_t colorHigh = (plane1 >> (7 - tileCol)) & 1;
+                uint8_t colorId = (colorHigh << 1) | colorLow;
+                if (colorId == 0) continue;
+
+                int px = spriteX + col;
+                int py = spriteY + row;
+                if (px < 0 || px >= NES_WIDTH || py < 0 || py >= NES_HEIGHT) continue;
+
+                uint8_t palEntry = paletteRAM[0x10 + (paletteIndex * 4) + colorId] & 0x3F;
+
+                pixels[py * NES_WIDTH + px] = nesPalette[palEntry];
+            }
+        }
+    }
+
+    SDL_UpdateTexture(texture, nullptr, pixels, NES_WIDTH * sizeof(uint32_t));
+    SDL_RenderClear(renderer);
+    SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+   // SDL_RenderPresent(renderer);
+}
