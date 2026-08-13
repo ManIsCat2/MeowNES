@@ -1,21 +1,30 @@
 #include "gb_ppu.hpp"
 #include "gb_cpu.hpp"
 #include <cstring>
+#include <algorithm>
+
+struct OAMSprite {
+    int index = 0;
+    int y = 0;
+    int x = 0;
+    uint8_t tile = 0;
+    uint8_t attributes = 0;
+};
 
 GbPPU gbPpu;
 
 uint32_t gbPaletteDefault[4] = {
-    0xFFE0F8D0,
-    0xFF88C070,
-    0xFF346856,
-    0xFF081820
+    0xFFFFFFFF,
+    0xFFB0B0B0,
+    0xFF686868,
+    0xFF000000
 };
 
 uint32_t gbPalette[4] = {
-    0xFFE0F8D0,
-    0xFF88C070,
-    0xFF346856,
-    0xFF081820
+    0xFFFFFFFF,
+    0xFFB0B0B0,
+    0xFF686868,
+    0xFF000000
 };
 
 GbPPU::GbPPU() {
@@ -36,8 +45,12 @@ void GbPPU::reset() {
     memset(VRAM, 0, sizeof(VRAM));
     memset(OAM, 0, sizeof(OAM));
     memset(frameBuffer, 0, sizeof(frameBuffer));
-    memset(palIndexBuf, 0, sizeof(palIndexBuf));
+    memset(BGPaletteRAM, 0, sizeof(BGPaletteRAM));
+    memset(SPPaletteRAM, 0, sizeof(SPPaletteRAM));
 
+    VBK = 0;
+    BCPS = 0; BCPD = 0;
+    OCPS = 0; OCPD = 0;
     LCDC = 0x91;
     STAT = 0x85;
     SCY  = 0x00;
@@ -51,14 +64,18 @@ void GbPPU::reset() {
     WY   = 0x00;
     WX   = 0x00;
 
+    windowLine = 0;
     scanlineCounter = 456;
+    windowYLatch = false;
 }
 
 void GbPPU::Step(uint8_t cycles) {
     if (!(LCDC & 0x80)) {
         LY = 0;
+        windowLine = 0;
         scanlineCounter = 456;
         STAT = (STAT & ~0x03);
+        windowYLatch = false;
         return;
     }
 
@@ -67,6 +84,10 @@ void GbPPU::Step(uint8_t cycles) {
     while (scanlineCounter <= 0) {
         scanlineCounter += 456;
         LY++;
+
+        if (LY == WY) {
+            windowYLatch = true;
+        }
 
         if (LY == 144) {
             cpu->IF |= 0x01;
@@ -79,7 +100,10 @@ void GbPPU::Step(uint8_t cycles) {
         }
 
         if (LY > 153) {
+            windowLine = 0;
             LY = 0;
+            windowYLatch = false;
+            if (LY == WY) windowYLatch = true; 
         }
 
         if (LY == LYC) {
@@ -130,84 +154,103 @@ void GbPPU::Step(uint8_t cycles) {
 }
 
 void GbPPU::RenderScanline() {
-    uint16_t tileMap = (LCDC & 0x08) ? 0x9C00 : 0x9800;
+    bool isCGB = getGBRom()->isCGB;
+    bool isRealCGB = (getGBRom()->isRealCGB || cpu->useBootROM);
+    bool masterPriority = (LCDC & 0x01);
+
+    if (!isCGB && !masterPriority) {
+        for (int pixel = 0; pixel < 160; pixel++) {
+            frameBuffer[LY * 160 + pixel] = gbPalette[0];
+        }
+        return;
+    }
+
+    uint16_t bgTileMap = (LCDC & 0x08) ? 0x9C00 : 0x9800;
+    uint16_t winTileMap = (LCDC & 0x40) ? 0x9C00 : 0x9800;
     uint16_t tileData = (LCDC & 0x10) ? 0x8000 : 0x8800;
     bool isUnsigned = (LCDC & 0x10);
 
-    uint16_t yPos = (uint16_t)(SCY + LY);
-    uint16_t tileRow = ((yPos / 8) % 32) * 32;
-
     uint8_t bgLineColorIds[160] = {0};
+    bool bgPriorityLine[160] = {false};
+    bool windowDrawn = false;
 
-    if (LCDC & 0x01) {
-        for (int pixel = 0; pixel < 160; pixel++) {
-            uint8_t xPos = pixel + SCX;
-            uint16_t tileCol = (xPos / 8);
-            uint16_t tileAddress = tileMap + tileRow + tileCol;
+    uint16_t bgYPos = (uint16_t)(SCY + LY);
+    uint16_t bgTileRow = ((bgYPos / 8) & 31) * 32;
+    uint8_t bgLineY = bgYPos % 8;
 
-            uint16_t tileDataLocation;
-            if (isUnsigned) {
-                uint8_t tileNum = VRAM[tileAddress - 0x8000];
-                tileDataLocation = tileData + (tileNum * 16);
-            } else {
-                int8_t tileNum = (int8_t)VRAM[tileAddress - 0x8000];
-                int16_t offset = tileNum * 16;
-                tileDataLocation = 0x9000 + offset;
-            }
-            
-            uint8_t line = (yPos % 8) * 2;
-            uint8_t byte1 = VRAM[tileDataLocation + line - 0x8000];
-            uint8_t byte2 = VRAM[tileDataLocation + line + 1 - 0x8000];
+    uint8_t winY = windowLine;
+    uint16_t winTileRow = ((winY / 8) & 31) * 32;
+    uint8_t winLineY = winY % 8;
 
-            int bitBit = 7 - (xPos % 8);
-            int colorBit0 = (byte1 >> bitBit) & 0x01;
-            int colorBit1 = (byte2 >> bitBit) & 0x01;
-            uint8_t colorId = (colorBit1 << 1) | colorBit0;
-            
-            bgLineColorIds[pixel] = colorId;
+    int wx = WX - 7;
+    bool windowEnabled = (LCDC & 0x20) && windowYLatch;
 
-            uint8_t colorPaletteShade = (BGP >> (colorId * 2)) & 0x03;
-            palIndexBuf[LY * 160 + pixel] = colorPaletteShade;
+    for (int pixel = 0; pixel < 160; pixel++) {
+        bool useWindow = windowEnabled && (pixel >= wx);
+        
+        uint16_t tileMap, tileRow;
+        uint8_t lineY, localX;
+
+        if (useWindow) {
+            windowDrawn = true;
+            int windowPixelX = pixel - wx;
+            tileMap = winTileMap;
+            tileRow = winTileRow;
+            lineY = winLineY;
+            localX = windowPixelX;
+        } else {
+            uint16_t xPos = (uint16_t)(pixel + SCX);
+            tileMap = bgTileMap;
+            tileRow = bgTileRow;
+            lineY = bgLineY;
+            localX = xPos;
         }
-    } else {
-        for(int pixel = 0; pixel < 160; pixel++) {
-            palIndexBuf[LY * 160 + pixel] = 0;
+
+        uint16_t tileCol = (localX / 8) & 31;
+        uint16_t tileAddress = tileMap + tileRow + tileCol;
+
+        uint8_t attributes = isRealCGB ? VRAM[(tileAddress - 0x8000) + 8192] : 0;
+        uint8_t cgbPalette = attributes & 0x07;
+        uint8_t cgbTileBank = (attributes & 0x08) >> 3;
+        bool cgbXFlip = attributes & 0x20;
+        bool cgbYFlip = attributes & 0x40;
+        bool cgbBgOamPrior = attributes & 0x80;
+
+        uint16_t tileDataLocation;
+        if (isUnsigned) {
+            uint8_t tileNum = VRAM[(tileAddress - 0x8000)];
+            tileDataLocation = tileData + (tileNum * 16);
+        } else {
+            int8_t tileNum = (int8_t)VRAM[(tileAddress - 0x8000)];
+            tileDataLocation = 0x9000 + (tileNum * 16);
+        }
+
+        uint8_t effectiveLineY = cgbYFlip ? (7 - lineY) : lineY;
+        uint16_t lineOffset = effectiveLineY * 2;
+        uint16_t bankOffset = isCGB ? (cgbTileBank * 8192) : 0;
+
+        uint8_t byte1 = VRAM[(tileDataLocation + lineOffset - 0x8000) + bankOffset];
+        uint8_t byte2 = VRAM[(tileDataLocation + lineOffset + 1 - 0x8000) + bankOffset];
+
+        int bitBit = cgbXFlip ? (localX % 8) : (7 - (localX % 8));
+        uint8_t colorId = (((byte2 >> bitBit) & 1) << 1) | ((byte1 >> bitBit) & 1);
+
+        bgLineColorIds[pixel] = colorId;
+        bgPriorityLine[pixel] = isCGB ? cgbBgOamPrior : false;
+
+        if (isCGB) {
+            uint8_t palBase = (cgbPalette * 8) + (colorId * 2);
+            uint16_t colorData = BGPaletteRAM[palBase] | (BGPaletteRAM[palBase + 1] << 8);
+            uint32_t finalColor = 0xFF000000 | (((colorData & 0x001F) << 3) << 16) | (((colorData & 0x03E0) >> 2) << 8) | (((colorData & 0x7C00) >> 7));
+            frameBuffer[LY * 160 + pixel] = finalColor;
+        } else {
+            uint8_t colorPaletteShade = (BGP >> (colorId * 2)) & 0x03;
+            frameBuffer[LY * 160 + pixel] = gbPalette[colorPaletteShade];
         }
     }
 
-    if ((LCDC & 0x20) && LY >= WY) {
-        uint16_t windowTileMap = (LCDC & 0x40) ? 0x9C00 : 0x9800;
-        int windowY = LY - WY;
-        int tileRow = ((windowY / 8) & 31) * 32;
-
-        for (int pixel = 0; pixel < 160; pixel++) {
-            int windowX = pixel - (WX - 7);
-            if (windowX < 0) continue;
-
-            uint16_t tileCol = (windowX / 8) & 31;
-            uint16_t tileAddr = windowTileMap + tileRow + tileCol;
-            uint16_t tileDataLocation = 0;
-
-            if (isUnsigned) {
-                uint8_t tileNum = VRAM[tileAddr - 0x8000];
-                tileDataLocation = 0x8000 + tileNum * 16;
-            } else {
-                int8_t tileNum = (int8_t)VRAM[tileAddr - 0x8000];
-                tileDataLocation = 0x9000 + tileNum * 16;
-            }
-
-            uint8_t line = (windowY % 8) * 2;
-            uint8_t byte1 = VRAM[tileDataLocation + line - 0x8000];
-            uint8_t byte2 = VRAM[tileDataLocation + line + 1 - 0x8000];
-
-            int bit = 7 - (windowX % 8);
-
-            uint8_t colorId = (((byte2 >> bit) & 1) << 1) | ((byte1 >> bit) & 1);
-            bgLineColorIds[pixel] = colorId;
-
-            uint8_t shade = (BGP >> (colorId * 2)) & 3;
-            palIndexBuf[LY * 160 + pixel] = shade;
-        }
+    if (windowDrawn) {
+        windowLine++;
     }
 
     if (!(LCDC & 0x02)) return;
@@ -215,57 +258,85 @@ void GbPPU::RenderScanline() {
     bool use8x16 = (LCDC & 0x04);
     int spriteHeight = use8x16 ? 16 : 8;
     int spritesFound = 0;
+    OAMSprite sprites[10];
 
     for (int i = 0; i < 40; i++) {
         uint16_t oamBase = i * 4;
-        
         int spriteY = OAM[oamBase] - 16;
-        int spriteX = OAM[oamBase + 1] - 8;
-        uint8_t tileNum = OAM[oamBase + 2];
-        uint8_t attributes = OAM[oamBase + 3];
+        
+        if (LY >= spriteY && LY < (spriteY + spriteHeight)) {
+            sprites[spritesFound] = {
+                i,
+                spriteY,
+                OAM[oamBase + 1] - 8,
+                OAM[oamBase + 2],
+                OAM[oamBase + 3]
+            };
+            
+            spritesFound++;
+            if (spritesFound >= 10) break;
+        }
+    }
 
+    std::sort(sprites, sprites + spritesFound, [](const OAMSprite &a, const OAMSprite &b) {
+        if (a.x != b.x) {
+            return a.x > b.x;
+        }
+        return a.index > b.index;
+    });
+
+    for (int i = 0; i < spritesFound; i++) {
+        OAMSprite &spr = sprites[i];
+        
+        uint8_t tileNum = spr.tile;
         if (use8x16) {
             tileNum &= 0xFE; 
         }
+        
+        uint8_t cgbPalette  = spr.attributes & 0x07;
+        uint8_t cgbTileBank = (spr.attributes & 0x08) >> 3;
+        bool objToBgPriority = (spr.attributes & 0x80); 
+        bool yFlip = (spr.attributes & 0x40); 
+        bool xFlip = (spr.attributes & 0x20); 
+        uint8_t paletteReg = (spr.attributes & 0x10) ? OBP1 : OBP0; 
 
-        if (LY >= spriteY && LY < (spriteY + spriteHeight)) {
-            spritesFound++;
-            if (spritesFound > 10) break;
+        int lineInsideSprite = LY - spr.y;
+        if (yFlip) {
+            lineInsideSprite = spriteHeight - 1 - lineInsideSprite;
+        }
 
-            bool objToBgPriority = (attributes & 0x80); 
-            bool yFlip           = (attributes & 0x40); 
-            bool xFlip           = (attributes & 0x20); 
-            uint8_t paletteReg   = (attributes & 0x10) ? OBP1 : OBP0; 
+        uint16_t tileDataLocation = 0x8000 + (tileNum * 16) + (lineInsideSprite * 2);
+        uint16_t bankOffset = isCGB ? (cgbTileBank * 8192) : 0;
 
-            int lineInsideSprite = LY - spriteY;
-            if (yFlip) {
-                lineInsideSprite = spriteHeight - 1 - lineInsideSprite;
+        uint8_t byte1 = VRAM[(tileDataLocation - 0x8000) + bankOffset];
+        uint8_t byte2 = VRAM[(tileDataLocation + 1 - 0x8000) + bankOffset];
+        
+        for (int tilePixel = 0; tilePixel < 8; tilePixel++) {
+            int pixelX = spr.x + tilePixel;
+            
+            if (pixelX < 0 || pixelX >= 160) continue;
+
+            int bitBit = xFlip ? tilePixel : (7 - tilePixel);
+            int colorBit0 = (byte1 >> bitBit) & 0x01;
+            int colorBit1 = (byte2 >> bitBit) & 0x01;
+            uint8_t colorId = (colorBit1 << 1) | colorBit0;
+
+            if (colorId == 0) continue;
+
+            if (masterPriority) {
+                if (isCGB && bgPriorityLine[pixelX] && bgLineColorIds[pixelX] != 0) continue;
+                if (objToBgPriority && bgLineColorIds[pixelX] != 0) continue; 
             }
 
-            uint16_t tileDataLocation = 0x8000 + (tileNum * 16) + (lineInsideSprite * 2);
-            uint8_t byte1 = VRAM[tileDataLocation - 0x8000];
-            uint8_t byte2 = VRAM[tileDataLocation + 1 - 0x8000];
-
-            for (int tilePixel = 0; tilePixel < 8; tilePixel++) {
-                int pixelX = spriteX + tilePixel;
+            if (isCGB) {
+                uint8_t palBase = (cgbPalette * 8) + (colorId * 2);
+                uint16_t colorData = SPPaletteRAM[palBase] | (SPPaletteRAM[palBase + 1] << 8);
+                uint32_t finalColor = 0xFF000000 | (((colorData & 0x001F) << 3) << 16) | (((colorData & 0x03E0) >> 2) << 8) | (((colorData & 0x7C00) >> 7));
                 
-                if (pixelX < 0 || pixelX >= 160) continue;
-
-                int bitBit = xFlip ? tilePixel : (7 - tilePixel);
-                int colorBit0 = (byte1 >> bitBit) & 0x01;
-                int colorBit1 = (byte2 >> bitBit) & 0x01;
-                uint8_t colorId = (colorBit1 << 1) | colorBit0;
-
-                if (colorId == 0) continue;
-
-                if (objToBgPriority && bgLineColorIds[pixelX] != 0) {
-                    continue; 
-                }
-
+                if (!DisableSprites) frameBuffer[LY * 160 + pixelX] = finalColor;
+            } else {
                 uint8_t colorPaletteShade = (paletteReg >> (colorId * 2)) & 0x03;
-                if (!DisableSprites) {
-                    palIndexBuf[LY * 160 + pixelX] = colorPaletteShade;
-                }
+                if (!DisableSprites) frameBuffer[LY * 160 + pixelX] = gbPalette[colorPaletteShade];
             }
         }
     }
@@ -275,23 +346,23 @@ void GbPPU::blitPixels() {
     for (int y = 0; y < 144; y++) {
         for (int x = 0; x < 160; x++) {
             int i = y * 160 + x;
-            frameBuffer[i] = gbPalette[palIndexBuf[i]];
             vfilter->applyFilter(&frameBuffer[i], x, y);
         }
     }
 }
 
 uint8_t GbPPU::readVRAM(uint16_t addr) {
-    return VRAM[addr - 0x8000];
+    uint16_t offset = (addr - 0x8000) + (VBK * 8192);
+    return VRAM[offset];
 }
 void GbPPU::writeVRAM(uint16_t addr, uint8_t value) {
-    uint16_t offset = addr - 0x8000; 
+    uint16_t offset = (addr - 0x8000) + (VBK * 8192); 
 
     if (VRAMCorruption && (rand() & 7) == 0) {
         offset ^= (1 << (rand() % 13)); 
     }
 
-    offset &= 0x1FFF; 
+    offset &= 0x3FFF;
     VRAM[offset] = value;
 }
 uint8_t GbPPU::readOAM(uint16_t addr) {
@@ -315,7 +386,12 @@ uint8_t GbPPU::readRegister(uint16_t addr) {
         case 0xFF49: return OBP1;
         case 0xFF4A: return WY;
         case 0xFF4B: return WX;
-        default:     return 0xFF;
+        case 0xFF4F: return VBK | 0xFE; 
+        case 0xFF68: return BCPS | 0x40;
+        case 0xFF69: return BGPaletteRAM[BCPS & 0x3F];
+        case 0xFF6A: return OCPS | 0x40;
+        case 0xFF6B: return SPPaletteRAM[OCPS & 0x3F];
+        default: return 0xFF;
     }
 }
 
@@ -325,8 +401,10 @@ void GbPPU::writeRegister(uint16_t addr, uint8_t value) {
             LCDC = value; 
             if (!(value & 0x80)) {
                 LY = 0;
+                windowLine = 0;
                 scanlineCounter = 456;
                 STAT = (STAT & ~0x03);
+                windowYLatch = false;
             }
             break;
         }
@@ -351,7 +429,6 @@ void GbPPU::writeRegister(uint16_t addr, uint8_t value) {
             } else {
                 STAT &= ~0x04;
             }
-
             break;
         case 0xFF46: {
             DMA = value;
@@ -367,5 +444,25 @@ void GbPPU::writeRegister(uint16_t addr, uint8_t value) {
         case 0xFF49: OBP1 = value; break;
         case 0xFF4A: WY = value; break;
         case 0xFF4B: WX = value; break;
+        
+        case 0xFF4F: VBK = value & 1; break;
+        case 0xFF68: BCPS = value; break;
+        case 0xFF69: {
+            uint8_t index = BCPS & 0x3F;
+            BGPaletteRAM[index] = value;
+            if (BCPS & 0x80) {
+                BCPS = (BCPS & 0x80) | ((index + 1) & 0x3F);
+            }
+            break;
+        }
+        case 0xFF6A: OCPS = value; break;
+        case 0xFF6B: {
+            uint8_t index = OCPS & 0x3F;
+            SPPaletteRAM[index] = value;
+            if (OCPS & 0x80) {
+                OCPS = (OCPS & 0x80) | ((index + 1) & 0x3F);
+            }
+            break;
+        }
     }
 }

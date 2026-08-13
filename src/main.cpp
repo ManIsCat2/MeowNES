@@ -13,6 +13,7 @@
 #include "qt/input_manager.hpp"
 #include "qt/palette_editor.hpp"
 #include "config.hpp"
+#include "rom.hpp"
 #include "savestate.hpp"
 
 #include <QApplication>
@@ -29,6 +30,8 @@
 #include <QComboBox>
 #include <QCheckBox>
 #include <QColorDialog>
+#include <array>
+#include <string_view>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -44,7 +47,7 @@ int hoveredPaletteIndex = -1;
 
 void *globalQTWin;
 
-unsigned char EMeowlatorIcon[] = {
+const unsigned char EMeowlatorIcon[] = {
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
     0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x10,
     0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0xf3, 0xff, 0x61, 0x00, 0x00, 0x00,
@@ -66,8 +69,12 @@ unsigned char EMeowlatorIcon[] = {
     0x4e, 0x44, 0xae, 0x42, 0x60, 0x82
 };
 
-std::string joinLines(std::vector<std::string> lines) {
+std::string joinLines(const std::vector<std::string> &lines) {
     std::string result;
+    size_t totalSize = 0;
+    for (const auto &line : lines) totalSize += line.size() + 1;
+    result.reserve(totalSize);
+    
     for (size_t i = 0; i < lines.size(); ++i) {
         result += lines[i];
         if (i != lines.size() - 1) result += "\n";
@@ -84,29 +91,31 @@ QAction *makeQBool(const QString &text, QObject *parent, bool defaultBool) {
 
 QTimer cpuTimer;
 
-std::string allowedExts[] = {
+const std::array<std::string_view, 3> allowedExts = {
     ".nes",
-    ".gb"
+    ".gb",
+    ".gbc"
 };
 
 bool loadConsoleWithGame(const std::string &file) {
-    QMainWindow *win = (QMainWindow*)globalQTWin;
+    QMainWindow *win = (QMainWindow*)(globalQTWin);
 
-    bool allow = false;
-    std::string matchedExt = "";
-
-    size_t dotPos = file.find_last_of(".");
+    size_t dotPos = file.find_last_of('.');
     if (dotPos == std::string::npos) {
         romIsLoaded = false;
         return false;
     }
 
     std::string rawExt = file.substr(dotPos);
-    for (char &c : rawExt) c = std::tolower(c);
-    for (auto &ext : allowedExts) {
+    for (char &c : rawExt) c = (char)(std::tolower(c));
+    
+    bool allow = false;
+    std::string matchedExt = "";
+    
+    for (const auto &ext : allowedExts) {
         if (rawExt == ext) {
             allow = true;
-            matchedExt = ext;
+            matchedExt = std::string(ext);
             break;
         }
     }
@@ -123,8 +132,10 @@ bool loadConsoleWithGame(const std::string &file) {
 
     if (matchedExt == ".nes") {
         emuConsole = new NESConsole;
-    } else if (matchedExt == ".gb") {
+        win->setWindowTitle("EMeowlator - NES");
+    } else if (matchedExt == ".gb" || matchedExt == ".gbc") {
         emuConsole = new GBConsole;
+        win->setWindowTitle("EMeowlator - Game Boy");
     } else {
         romIsLoaded = false;
         return false;
@@ -137,9 +148,7 @@ bool loadConsoleWithGame(const std::string &file) {
 
     emuConsole->init();
 
-    bool ret = emuConsole->loadGame(file);
-
-    if (!ret) {
+    if (!emuConsole->loadGame(file)) {
         romIsLoaded = false;
         delete emuConsole;
         emuConsole = nullptr;
@@ -165,10 +174,15 @@ void ShowRomInfoDialog(QWidget* parent) {
     dialog->setFixedSize(350, 250);
 
     if (emuConsole && romIsLoaded) {
+        const ConsoleType type = emuConsole->getConsoleType();
+        const bool isNES = (type == ConsoleType::NES);
+        const bool isGB  = (type == ConsoleType::GAMEBOY);
+
         std::string fileStr = "File: " + getRom()->Name;
-        if (emuConsole->getConsoleType() == ConsoleType::NES) {
+        if (isNES) {
             NesROM *rom = getNESRom();
             std::string HeaderHexStr;
+            HeaderHexStr.reserve(32);
             for (int i = 0; i < 8; i++) {
                 char Buf[4];
                 snprintf(Buf, sizeof(Buf), "%02X", rom->Header[i]);
@@ -178,9 +192,9 @@ void ShowRomInfoDialog(QWidget* parent) {
             HeaderHexStr = "Header: " + HeaderHexStr;
             std::string headVerStr = "Header Version: " + std::string(rom->Version == HeaderVersion::NES2_0 ? "NES2.0" : "INES");
             char PRGSizeStr[128];
-            sprintf(PRGSizeStr, "PRG Size: %uKiB (%u x 16KiB)", rom->PRGNumPages * 16, rom->PRGNumPages);
+            snprintf(PRGSizeStr, sizeof(PRGSizeStr), "PRG Size: %uKiB (%u x 16KiB)", rom->PRGNumPages * 16, rom->PRGNumPages);
             char CHRSizeStr[128];
-            sprintf(CHRSizeStr, "CHR Size: %uKiB (%u x 8KiB)", rom->CHRNumPages * 8, rom->CHRNumPages);
+            snprintf(CHRSizeStr, sizeof(CHRSizeStr), "CHR Size: %uKiB (%u x 8KiB)", rom->CHRNumPages * 8, rom->CHRNumPages);
             std::string mapperStr = "Mapper: " + std::string(rom->mapper ? rom->mapper->getName() : (rom->MapperID ? "Unknown" : "NROM")) + " (Mapper " + std::to_string(rom->MapperID)+")";
             std::string subMapperStr = "Sub Mapper: " + std::to_string(rom->SubMapperID);
             std::string mirrorStr = "Mirroring: " + std::string(rom->Mirroring == MirrorMode::HORIZONTAL ? "Horizontal" : "Vertical");
@@ -188,25 +202,26 @@ void ShowRomInfoDialog(QWidget* parent) {
             std::string CHRRamStr = "CHR-RAM: " + std::string(rom->CHRRomSize == 0 ? "Yes" : "No");
             char batterySizeStr[128];
             size_t SRAMSize = rom->hasBattery ? rom->mapper->getSRAMSize() : 0x0000; 
-            sprintf(batterySizeStr, "SRAM/Battery Size: 0x%zx (%zu)", SRAMSize, SRAMSize);
+            snprintf(batterySizeStr, sizeof(batterySizeStr), "SRAM/Battery Size: 0x%zx (%zu)", SRAMSize, SRAMSize);
             char RESETVecStr[128];
-            sprintf(RESETVecStr, "RESET Vector: 0x%x", rom->ResetVec);
+            snprintf(RESETVecStr, sizeof(RESETVecStr), "RESET Vector: 0x%x", rom->ResetVec);
 
             fullInfo = joinLines({fileStr, HeaderHexStr, headVerStr, PRGSizeStr, CHRSizeStr, mapperStr, subMapperStr, mirrorStr, batteryStr, CHRRamStr, batterySizeStr, RESETVecStr});
-        } else if (emuConsole->getConsoleType() == ConsoleType::GAMEBOY) {
+        } else if (isGB) {
             GbROM *rom = getGBRom();
 
             std::string titleStr = "Title: " + rom->Title;
             std::string mapperStr = "Mapper: " + std::string(rom->mbc->getName()) + " (Mapper " + std::to_string(rom->cartType)+")";
             std::string batteryStr = "Battery: " + std::string(rom->hasBattery() ? "Yes" : "No");
+            std::string RTCStr = "RTC: " + std::string(rom->hasRTC() ? "Yes" : "No");
             std::string RAMStr = "External RAM: " + std::string(rom->hasRAM() ? "Yes" : "No");
 
             char ROMSizeStr[128];
-            sprintf(ROMSizeStr, "ROM Size: %uKiB", rom->RomSize / 1024);
+            snprintf(ROMSizeStr, sizeof(ROMSizeStr), "ROM Size: %uKiB", rom->RomSize / 1024);
             char RAMSizeStr[128];
-            sprintf(RAMSizeStr, "RAM Size: %uKiB", rom->ramSize/ 1024);
+            snprintf(RAMSizeStr, sizeof(RAMSizeStr), "RAM Size: %uKiB", rom->ramSize / 1024);
 
-            fullInfo = joinLines({fileStr, titleStr, mapperStr, batteryStr, RAMStr, ROMSizeStr, RAMSizeStr});
+            fullInfo = joinLines({fileStr, titleStr, mapperStr, batteryStr, RTCStr, RAMStr, ROMSizeStr, RAMSizeStr});
         }
     }
     QLabel* label = new QLabel(QString::fromStdString(fullInfo), dialog);
@@ -217,10 +232,14 @@ void ShowRomInfoDialog(QWidget* parent) {
 
     dialog->setLayout(layout);
     dialog->exec();
+    delete dialog;
 }
 
 void ShowAudioConfigDialog(QWidget* parent) {
     if (!emuConsole) return;
+    const ConsoleType type = emuConsole->getConsoleType();
+    const bool isNES = (type == ConsoleType::NES);
+
     QDialog *dialog = new QDialog(parent);
     dialog->setWindowTitle("Audio Config");
     dialog->setFixedSize(500, 340);
@@ -229,19 +248,19 @@ void ShowAudioConfigDialog(QWidget* parent) {
     QGroupBox *volumeBox = new QGroupBox("Volume", dialog);
     QHBoxLayout *volumeLayout = new QHBoxLayout(volumeBox);
     volumeLayout->setSpacing(5);
-    volumeLayout->setContentsMargins(10,10,10,10);
+    volumeLayout->setContentsMargins(10, 10, 10, 10);
 
-    if (emuConsole->getConsoleType() == ConsoleType::NES) {
-        const std::string volumeNames[] = {"Square 1", "Square 2", "Triangle", "Noise", "DMC", "Master"};
+    if (isNES) {
+        const std::array<const char*, 6> volumeNames = {"Square 1", "Square 2", "Triangle", "Noise", "DMC", "Master"};
         float *volumePtrs[] = { &nesApu.pulse1Volume, &nesApu.pulse2Volume, &nesApu.triangleVolume, &nesApu.noiseVolume, &nesApu.dmcVolume, &nesApu.masterVolume };
 
         for (int i = 0; i < 6; ++i) {
             QWidget *pairWidget = new QWidget(volumeBox);
             QVBoxLayout *pairLayout = new QVBoxLayout(pairWidget);
-            pairLayout->setContentsMargins(0,0,0,0);
+            pairLayout->setContentsMargins(0, 0, 0, 0);
             pairLayout->setSpacing(5);
 
-            QLabel *label = new QLabel(QString::fromStdString(volumeNames[i]), pairWidget);
+            QLabel *label = new QLabel(volumeNames[i], pairWidget);
             label->setAlignment(Qt::AlignHCenter);
             pairLayout->addWidget(label);
 
@@ -259,25 +278,32 @@ void ShowAudioConfigDialog(QWidget* parent) {
 
             volumeLayout->addWidget(pairWidget);
         }
-    } else if (emuConsole->getConsoleType() == ConsoleType::GAMEBOY) {
+    } else if (type == ConsoleType::GAMEBOY) {
     }
 
     volumeBox->setLayout(volumeLayout);
     mainLayout->addWidget(volumeBox);
     dialog->setLayout(mainLayout);
     dialog->exec();
+    delete dialog;
 }
 
 void ShowInputConfigDialog(QWidget* parent) {
     if (!emuConsole) return;
+    const ConsoleType type = emuConsole->getConsoleType();
+    const bool isNES = (type == ConsoleType::NES);
+    const bool isGB  = (type == ConsoleType::GAMEBOY);
+
     QDialog *dialog = new QDialog(parent);
     dialog->setWindowTitle("Input Config");
     dialog->setFixedSize(300, 340);
 
     QVBoxLayout *layout = new QVBoxLayout(dialog);
 
-    if (emuConsole->getConsoleType() == ConsoleType::NES) {
-        std::vector<KeyCaptureButton*> buttons[sizeof(nesKeyBinds) / sizeof(nesKeyBinds[0])];
+    if (isNES || isGB) {
+        std::vector<KeyCaptureButton*> buttons;
+        buttons.reserve(sizeof(nesKeyBinds) / sizeof(nesKeyBinds[0]));
+        
         for (auto &bind : nesKeyBinds) {
             QHBoxLayout *row = new QHBoxLayout();
             QLabel *label = new QLabel(bind.name);
@@ -287,7 +313,7 @@ void ShowInputConfigDialog(QWidget* parent) {
                 &bind.key,
                 dialog
             );
-            buttons->push_back(button);
+            buttons.push_back(button);
 
             QObject::connect(button, &QPushButton::clicked, [button]() {
                 button->setText("Press key...");
@@ -301,28 +327,30 @@ void ShowInputConfigDialog(QWidget* parent) {
         }
 
         QPushButton *resetButton = new QPushButton("Reset Binds", dialog);
-        QObject::connect(resetButton, &QPushButton::clicked, dialog, [&]() {
+        QObject::connect(resetButton, &QPushButton::clicked, [buttons]() {
             memcpy(nesKeyBinds, nesKeyBindsDefault, sizeof(nesKeyBinds));
-            for (size_t i = 0; i < buttons->size(); i++) {
-                KeyCaptureButton *button = buttons->data()[i];
-                button->setText(QKeySequence(nesKeyBindsDefault[i].key).toString());
+            for (size_t i = 0; i < buttons.size(); i++) {
+                buttons[i]->setText(QKeySequence(nesKeyBindsDefault[i].key).toString());
             }
         });
 
         layout->addStretch();
         layout->addWidget(resetButton);
-    } else if (emuConsole->getConsoleType() == ConsoleType::GAMEBOY) {
     }
 
     dialog->setLayout(layout);
     dialog->exec();
+    delete dialog;
 }
 
 void ShowDisplayConfigDialog(QWidget* parent) {
     if (!emuConsole) return;
+    const ConsoleType type = emuConsole->getConsoleType();
+    const bool isNES = (type == ConsoleType::NES);
+
     QDialog *dialog = new QDialog(parent);
     dialog->setWindowTitle("Display Config");
-    dialog->setFixedSize(560, emuConsole->getConsoleType() == ConsoleType::NES ? 420 : 280);
+    dialog->setFixedSize(560, isNES ? 420 : 280);
 
     QGridLayout *mainLayout = new QGridLayout(dialog);
     QGroupBox *settingsBox = new QGroupBox("Settings", dialog);
@@ -333,43 +361,45 @@ void ShowDisplayConfigDialog(QWidget* parent) {
     QVBoxLayout *regionLayout = new QVBoxLayout(regionBox);
     QComboBox *tvtypeComboBox = new QComboBox(regionBox);
 
-    std::vector<std::string> regionStrs = {"NTSC", "PAL", "Dendy"};
-    if (emuConsole->getConsoleType() == ConsoleType::GAMEBOY) {
-        regionStrs = {"Game Boy (DMG)"};
-    }
-    for (int i = 0; i < regionStrs.size(); ++i) {
-        tvtypeComboBox->addItem(QString::fromStdString(regionStrs[i]), i);
+    const std::vector<std::string> regionStrs = isNES 
+        ? std::vector<std::string>{"NTSC", "PAL", "Dendy"} 
+        : std::vector<std::string>{"Game Boy (DMG)", "Game Boy Color (CGB)"};
+
+    for (size_t i = 0; i < regionStrs.size(); ++i) {
+        tvtypeComboBox->addItem(QString::fromStdString(regionStrs[i]), (int)(i));
     }
 
-    if (emuConsole->getConsoleType() == ConsoleType::NES) {
+    if (isNES) {
         tvtypeComboBox->setCurrentIndex((int)(getNESRom()->Region));
+    } else {
+        tvtypeComboBox->setCurrentIndex((int)(getGBRom()->isCGB));
     }
 
-    QComboBox::connect(tvtypeComboBox, &QComboBox::currentIndexChanged, [&](int index) {
-        if (emuConsole->getConsoleType() == ConsoleType::NES) {
-            getNESRom()->Region = (ConsoleRegion)index;
+    QObject::connect(tvtypeComboBox, &QComboBox::currentIndexChanged, [isNES](int index) {
+        if (isNES) {
+            getNESRom()->Region = (ConsoleRegion)(index);
             startCPUTimer();
         } else {
-            // todo modify this when i add gbc
+            getGBRom()->isCGB = (bool)(index);
         }
         DebugPrintLog("SETTINGS", "Set Region/Model to %d", index);
     });
     regionLayout->addWidget(tvtypeComboBox);
 
-    if (emuConsole->getConsoleType() == ConsoleType::NES) {
+    if (isNES) {
         QGroupBox *shadowBox = new QGroupBox("Shadows", dialog);
         QVBoxLayout *shadowLayout = new QVBoxLayout(shadowBox);
         QComboBox *shadowComboBox = new QComboBox(shadowBox);
 
-        std::array<std::string, 4> shadowStrs = {"None", "Sprites", "Tiles", "Sprites & Tiles"};
+        const std::array<const char*, 4> shadowStrs = {"None", "Sprites", "Tiles", "Sprites & Tiles"};
 
-        for (int i = 0; i < shadowStrs.size(); ++i) {
-            shadowComboBox->addItem(QString::fromStdString(shadowStrs[i]), i);
+        for (size_t i = 0; i < shadowStrs.size(); ++i) {
+            shadowComboBox->addItem(shadowStrs[i], (int)(i));
         }
 
         shadowComboBox->setCurrentIndex(nesPpu.AddShadows);
 
-        QComboBox::connect(shadowComboBox, &QComboBox::currentIndexChanged, [&](int index) {
+        QObject::connect(shadowComboBox, &QComboBox::currentIndexChanged, [](int index) {
             nesPpu.AddShadows = index;
         });
 
@@ -378,49 +408,49 @@ void ShowDisplayConfigDialog(QWidget* parent) {
     }
     
     QGroupBox *ppuSettingsBox = new QGroupBox("PPU Settings", dialog);
-    ppuSettingsBox->setFixedSize(270, emuConsole->getConsoleType() == ConsoleType::NES ? 150 : 65);
+    ppuSettingsBox->setFixedSize(270, isNES ? 150 : 65);
 
     QGridLayout *ppuSettingsLayout = new QGridLayout(ppuSettingsBox);
     
     QCheckBox *VRAMCorruptCheckBox = new QCheckBox("VRAM Corruption", ppuSettingsBox);
-    VRAMCorruptCheckBox->setChecked(nesPpu.VRAMCorruption);
+    VRAMCorruptCheckBox->setChecked(isNES ? nesPpu.VRAMCorruption : gbPpu.VRAMCorruption);
 
     QCheckBox *disableSpritesCheckBox = new QCheckBox("Disable Sprites", ppuSettingsBox);
-    disableSpritesCheckBox->setChecked(nesPpu.DisableSprites);
+    disableSpritesCheckBox->setChecked(isNES ? nesPpu.DisableSprites : gbPpu.DisableSprites);
 
     ppuSettingsLayout->addWidget(VRAMCorruptCheckBox, 0, 0, Qt::AlignLeft | Qt::AlignTop);
     ppuSettingsLayout->addWidget(disableSpritesCheckBox, 0, 1, Qt::AlignLeft | Qt::AlignTop);
 
-    QObject::connect(VRAMCorruptCheckBox, &QCheckBox::toggled, [&](bool checked) {
-        if (emuConsole->getConsoleType() == ConsoleType::NES) {
+    QObject::connect(VRAMCorruptCheckBox, &QCheckBox::toggled, [isNES](bool checked) {
+        if (isNES) {
             nesPpu.VRAMCorruption = checked;
         } else {
             gbPpu.VRAMCorruption = checked;
         }
     });
-    QObject::connect(disableSpritesCheckBox, &QCheckBox::toggled, [&](bool checked) {
-        if (emuConsole->getConsoleType() == ConsoleType::NES) {
+    QObject::connect(disableSpritesCheckBox, &QCheckBox::toggled, [isNES](bool checked) {
+        if (isNES) {
             nesPpu.DisableSprites = checked;
         } else {
             gbPpu.DisableSprites = checked;
         }
     });
 
-    if (emuConsole->getConsoleType() == ConsoleType::NES) {
+    if (isNES) {
         QGroupBox *ntmirrorBox = new QGroupBox("NT Mirroring", dialog);
         QVBoxLayout *ntmirrorLayout = new QVBoxLayout(ntmirrorBox);
         QComboBox *ntmirrorComboBox = new QComboBox(ntmirrorBox);
 
-        std::array<std::string, 5> ntmirrorStrs = {"Horizontal", "Vertical", "Screen A", "Screen B", "Fourscreen"};
+        constexpr std::array<const char*, 5> ntmirrorStrs = {"Horizontal", "Vertical", "Screen A", "Screen B", "Fourscreen"};
 
-        for (int i = 0; i < ntmirrorStrs.size(); ++i) {
-            ntmirrorComboBox->addItem(QString::fromStdString(ntmirrorStrs[i]), i);
+        for (size_t i = 0; i < ntmirrorStrs.size(); ++i) {
+            ntmirrorComboBox->addItem(ntmirrorStrs[i], (int)(i));
         }
 
         ntmirrorComboBox->setCurrentIndex((int)(nesPpu.Mirroring));
 
-        QComboBox::connect(ntmirrorComboBox, &QComboBox::currentIndexChanged, [&](int index) {
-            nesPpu.Mirroring = (MirrorMode)index;
+        QObject::connect(ntmirrorComboBox, &QComboBox::currentIndexChanged, [](int index) {
+            nesPpu.Mirroring = (MirrorMode)(index);
             DebugPrintLog("SETTINGS", "Set NT Mirroring to %d", index);
         });
 
@@ -430,32 +460,19 @@ void ShowDisplayConfigDialog(QWidget* parent) {
 
     QGroupBox *paletteBox = new QGroupBox("Palette", dialog);
     QGridLayout *paletteLayout = new QGridLayout(paletteBox);
-    PaletteButton* buttons[64];
 
-    paletteBox->setFixedHeight(emuConsole->getConsoleType() == ConsoleType::NES ? 400 : 200);
+    paletteBox->setFixedHeight(isNES ? 400 : 200);
 
-    int palCount = emuConsole->getConsoleType() == ConsoleType::NES ? 64 : 4;
-    uint32_t *palTable = emuConsole->getConsoleType() == ConsoleType::NES ? nesPalette : gbPalette;
-    uint32_t *palTableOg = emuConsole->getConsoleType() == ConsoleType::NES ? nesPaletteDefault : gbPaletteDefault;
-    
-    auto updateAllButtonsColor = [&]() {
-        for (int i = 0; i < palCount; i++) {
-            QColor color(
-                (palTable[i] >> 16) & 0xFF,
-                (palTable[i] >> 8) & 0xFF,
-                palTable[i] & 0xFF
-            );
-            buttons[i]->setStyleSheet(QString("background-color: %1").arg(color.name()));
-            if (emuConsole->getConsoleType() == ConsoleType::NES && nesPpu.filtering == VideoFilter::NTSC) {
-                nesPpu.vfilter->initialize();
-            }
-        }
-    };
+    const int palCount = isNES ? 64 : 4;
+    uint32_t *palTable = isNES ? nesPalette : gbPalette;
+    uint32_t *palTableOg = isNES ? nesPaletteDefault : gbPaletteDefault;
+
+    std::vector<PaletteButton*> buttons(palCount, nullptr);
 
     for (int i = 0; i < palCount; i++) {
         buttons[i] = new PaletteButton(i, dialog);
 
-        auto updateButtonColor = [i, buttons, palTable]() {
+        auto updateButtonColor = [i, &buttons, palTable]() {
             QColor color(
                 (palTable[i] >> 16) & 0xFF,
                 (palTable[i] >> 8) & 0xFF,
@@ -466,7 +483,7 @@ void ShowDisplayConfigDialog(QWidget* parent) {
 
         updateButtonColor();
 
-        QObject::connect(buttons[i], &QPushButton::clicked, [i, dialog, palTable, updateButtonColor]() {
+        QObject::connect(buttons[i], &QPushButton::clicked, [i, dialog, palTable, updateButtonColor, isNES]() {
             QColor current(
                 (palTable[i] >> 16) & 0xFF,
                 (palTable[i] >> 8) & 0xFF,
@@ -481,7 +498,7 @@ void ShowDisplayConfigDialog(QWidget* parent) {
                     (newColor.green() << 8) |
                     newColor.blue();
                 updateButtonColor();
-                if (emuConsole->getConsoleType() == ConsoleType::NES && nesPpu.filtering == VideoFilter::NTSC) {
+                if (isNES && nesPpu.filtering == VideoFilter::NTSC && nesPpu.vfilter) {
                     nesPpu.vfilter->initialize();
                 }
             }
@@ -489,6 +506,20 @@ void ShowDisplayConfigDialog(QWidget* parent) {
 
         paletteLayout->addWidget(buttons[i], i / 8, i % 8);
     }
+
+    auto updateAllButtonsColor = [buttons, palCount, palTable, isNES]() {
+        for (int i = 0; i < palCount; i++) {
+            QColor color(
+                (palTable[i] >> 16) & 0xFF,
+                (palTable[i] >> 8) & 0xFF,
+                palTable[i] & 0xFF
+            );
+            buttons[i]->setStyleSheet(QString("background-color: %1").arg(color.name()));
+        }
+        if (isNES && nesPpu.filtering == VideoFilter::NTSC && nesPpu.vfilter) {
+            nesPpu.vfilter->initialize();
+        }
+    };
 
     QPushButton *resetButton = new QPushButton("Reset Palette", dialog);
     QPushButton *randomButton = new QPushButton("Randomize Palette", dialog);
@@ -503,17 +534,17 @@ void ShowDisplayConfigDialog(QWidget* parent) {
     exportButton->setFixedHeight(25);
     importButton->setFixedHeight(25);
     
-    QObject::connect(resetButton, &QPushButton::clicked, [&]() {
+    QObject::connect(resetButton, &QPushButton::clicked, [palTable, palTableOg, palCount, updateAllButtonsColor]() {
         memcpy(palTable, palTableOg, palCount * sizeof(uint32_t));
         updateAllButtonsColor();
     });
-    QObject::connect(randomButton, &QPushButton::clicked, [&]() {
+    QObject::connect(randomButton, &QPushButton::clicked, [palTable, palCount, updateAllButtonsColor]() {
         for (int i = 0; i < palCount; i++) {
             palTable[i] = 0xFF000000 | (rand() << 16) | (rand() << 8) | rand();
         }
         updateAllButtonsColor();
     });
-    QObject::connect(exportButton, &QPushButton::clicked, [&]() {
+    QObject::connect(exportButton, &QPushButton::clicked, [palTable, palCount, dialog, updateAllButtonsColor]() {
         QString file = QFileDialog::getSaveFileName(
             dialog,
             "Export Palette",
@@ -529,7 +560,7 @@ void ShowDisplayConfigDialog(QWidget* parent) {
             updateAllButtonsColor();
         }
     });
-    QObject::connect(importButton, &QPushButton::clicked, [&]() {
+    QObject::connect(importButton, &QPushButton::clicked, [palTable, palCount, dialog, updateAllButtonsColor]() {
         QString file = QFileDialog::getOpenFileName(
             dialog,
             "Import Palette",
@@ -550,17 +581,19 @@ void ShowDisplayConfigDialog(QWidget* parent) {
     QVBoxLayout *filterLayout = new QVBoxLayout(filterBox);
     QComboBox *filterComboBox = new QComboBox(filterBox);
 
-    std::array<std::string, 4> videoFiltersStr = {"None", "NTSC", "Chroma", "Grayscale"};
+    const std::array<const char*, 4> videoFiltersStr = {"None", "NTSC", "Chroma", "Grayscale"};
 
-    for (int i = 0; i < videoFiltersStr.size(); ++i) {
-        filterComboBox->addItem(QString::fromStdString(videoFiltersStr[i]), i);
+    for (size_t i = 0; i < videoFiltersStr.size(); ++i) {
+        filterComboBox->addItem(videoFiltersStr[i], (int)(i));
     }
 
-    if (emuConsole->getConsoleType() == ConsoleType::NES) {
+    if (isNES) {
         filterComboBox->setCurrentIndex((int)(nesPpu.filtering));
+    } else {
+        filterComboBox->setCurrentIndex((int)(gbPpu.filtering));
     }
 
-    QComboBox::connect(filterComboBox, &QComboBox::currentIndexChanged, [&](int index) {
+    QObject::connect(filterComboBox, &QComboBox::currentIndexChanged, [](int index) {
         if (emuConsole) {
             emuConsole->setVideoFilter(index);
             DebugPrintLog("SETTINGS", "Set Filter to %d", index);
@@ -587,6 +620,7 @@ void ShowDisplayConfigDialog(QWidget* parent) {
     settingsLayout->addWidget(filterBox, 2, 1);
     dialog->setLayout(mainLayout);
     dialog->exec();
+    delete dialog;
 }
 
 int main(int argc, char *argv[]) {
@@ -594,7 +628,7 @@ int main(int argc, char *argv[]) {
     app.setStyle(QStyleFactory::create("Fusion"));
     QMainWindow window;
     ScreenWidget *screen = new ScreenWidget(&window);
-    globalQTWin = (void*)&window;
+    globalQTWin = (void*)(&window);
 
     makeDirectory("saves");
 
@@ -639,7 +673,7 @@ int main(int argc, char *argv[]) {
             &window,
             "Open ROM",
             "",
-            "Supported ROMs (*.nes *.gb)"
+            "Supported ROMs (*.nes *.gb *.gbc)"
         );
 
         if (!file.isEmpty()) {
@@ -647,8 +681,8 @@ int main(int argc, char *argv[]) {
                 startCPUTimer();
                 emuConsole->reset();
 
-                int w = emuConsole->getDisplayWidth() * 2.5;
-                int h = emuConsole->getDisplayHeight() * 2.5;
+                int w = (int)(emuConsole->getDisplayWidth() * 2.5);
+                int h = (int)(emuConsole->getDisplayHeight() * 2.5);
                 screen->resize(w, h);
                 window.resize(w, h + window.menuBar()->height());
             }
@@ -661,6 +695,7 @@ int main(int argc, char *argv[]) {
                 emuConsole->reset();
             }
             romIsLoaded = false;
+            window.setWindowTitle("EMeowlator");
         }
     });
     QObject::connect(gameResetAction, &QAction::triggered, [&]() {
@@ -682,18 +717,10 @@ int main(int argc, char *argv[]) {
 
     audioSystem.init();
     cpuTimer.setTimerType(Qt::PreciseTimer);
+    
     QObject::connect(&cpuTimer, &QTimer::timeout, [&]() {
         screen->update();
-        if (!emuConsole || !romIsLoaded) {
-            window.setWindowTitle("EMeowlator");
-        } else {
-            if (emuConsole->getConsoleType() == ConsoleType::GAMEBOY) {
-                window.setWindowTitle("EMeowlator - Game Boy");
-            } else {
-                window.setWindowTitle("EMeowlator - NES");
-            }
-        }
-        if (romIsLoaded) {
+        if (romIsLoaded && emuConsole) {
             emuConsole->runFrame();
             screen->image = emuConsole->getOutputImage();
             rainbowHoverPhase += 0.002f;
@@ -701,7 +728,7 @@ int main(int argc, char *argv[]) {
         }
     });
 
-    window.resize(256*2, 240*2);
+    window.resize(256 * 2, 240 * 2);
 
     QPixmap pixmap;
     pixmap.loadFromData(EMeowlatorIcon, sizeof(EMeowlatorIcon) / sizeof(EMeowlatorIcon[0]));
@@ -713,6 +740,7 @@ int main(int argc, char *argv[]) {
         if (emuConsole) {
             emuConsole->writeSave();
             delete emuConsole;
+            emuConsole = nullptr;
         }
         audioSystem.close();
         Config::Write("meowconf.txt");
@@ -723,8 +751,8 @@ int main(int argc, char *argv[]) {
             startCPUTimer();
             emuConsole->reset();
 
-            int w = emuConsole->getDisplayWidth() * 2.5;
-            int h = emuConsole->getDisplayHeight() * 2.5;
+            int w = (int)(emuConsole->getDisplayWidth() * 2.5);
+            int h = (int)(emuConsole->getDisplayHeight() * 2.5);
             screen->resize(w, h);
             window.resize(w, h + window.menuBar()->height());
         }

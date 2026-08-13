@@ -10,7 +10,7 @@ public:
     GbPPU();
     ~GbPPU();
 
-    uint8_t VRAM[8192];
+    uint8_t VRAM[16384];
     uint8_t OAM[160];
 
     uint8_t LCDC = 0x00;
@@ -26,9 +26,16 @@ public:
     uint8_t WY   = 0x00;
     uint8_t WX   = 0x00;
 
+    uint8_t VBK = 0;
+    uint8_t BCPS = 0, BCPD = 0;
+    uint8_t OCPS = 0, OCPD = 0;
+    uint8_t BGPaletteRAM[64];
+    uint8_t SPPaletteRAM[64];
+
+    uint8_t windowLine = 0;
+    bool windowYLatch = false;
     int scanlineCounter = 0;
     uint32_t frameBuffer[NES_NTSC_OUT_WIDTH(160) * 144];
-    uint8_t palIndexBuf[160 * 144];
     QImage *rawOutputImage = nullptr;
     QImage *filteredOutputImage = nullptr;
 

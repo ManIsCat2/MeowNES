@@ -19,6 +19,7 @@ public:
         FlagZ = (1 << 7),
     };
 
+    bool useBootROM = false;
     bool paused = false;
 
     uint16_t timerCounter = 0;
@@ -31,6 +32,7 @@ public:
     uint8_t EIPending = 0;
     bool HALTBug = false;
 
+    std::string serialBuffer = "";
     uint8_t serialData = 0;
     uint8_t serialControl = 0;
 

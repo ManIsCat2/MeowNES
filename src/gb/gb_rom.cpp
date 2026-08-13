@@ -4,6 +4,10 @@
 #include <fstream>
 #include <iostream>
 
+uint8_t SameBoyCGBBootROM[] = {
+    #embed "bootroms/cgb_boot.bin"
+};
+
 GbROM::GbROM() {
 
 }
@@ -78,6 +82,14 @@ bool GbROM::load(const std::string &filename) {
     for (int i = 0; i < 80; i++) {
         Header[i] = ROM[0x0100 + i];
     }
+
+    uint8_t cgbFlag = ROM[0x0143];
+    isDualMode = (cgbFlag == 0x80);
+    isCGBOnly = (cgbFlag == 0xC0);
+    isCGB = true;
+    isRealCGB = isDualMode || isCGBOnly;
+
+    memcpy(bootROM, SameBoyCGBBootROM, 0x900);
 
     Title = "";
     for (uint16_t addr = 0x0134; addr <= 0x0143; addr++) {

@@ -5,15 +5,16 @@ GbCPU gbCpu;
 
 void GbCPU::reset() {
     connectBus(nullptr, &gbPpu);
+    useBootROM = true;
     paused = false;
 
-    A = 0x01;
-    F = 0xB0;
-    B = 0x00; C = 0x13;
-    D = 0x00; E = 0xD8;
-    H = 0x01; L = 0x4D;
-    SP = 0xFFFE;
-    PC = 0x0100;
+    A = 0;
+    F = 0;
+    B = 0; C = 0;
+    D = 0; E = 0;
+    H = 0; L = 0;
+    SP = 0;
+    PC = 0;
     cycles = 0;
     IME = false;
     EIPending = 0;
@@ -2211,6 +2212,18 @@ void GbCPU::executeCB(uint8_t opcode) {
 uint8_t GbCPU::read(uint16_t addr) {
     GbROM *rom = getGBRom();
 
+    if (useBootROM) {
+        if (rom->isCGB) {
+            if (addr < 0x0100 || (addr >= 0x0200 && addr < 0x0900)) {
+                return rom->bootROM[addr];
+            }
+        } else {
+            if (addr < 0x0100) {
+                return rom->bootROM[addr];
+            }
+        }
+    }
+
     if (addr >= 0x8000 && addr <= 0x9FFF) {
         return ppu->readVRAM(addr);
     }
@@ -2242,9 +2255,11 @@ uint8_t GbCPU::read(uint16_t addr) {
     if (addr == 0xFF0F) {
         return IF | 0xE0;
     }
-    if (addr >= 0xFF40 && addr <= 0xFF4B) {
+    
+    if ((addr >= 0xFF40 && addr <= 0xFF4B) || addr == 0xFF4F || (addr >= 0xFF68 && addr <= 0xFF6B)) {
         return ppu->readRegister(addr);
     }
+    
     if (addr == 0xFF04) {
         return DIV;
     }
@@ -2263,12 +2278,6 @@ uint8_t GbCPU::read(uint16_t addr) {
     if (addr >= 0xE000 && addr <= 0xFDFF) {
         return rom->mbc->WRAM[addr - 0xE000];
     }
-    if (addr == 0xFF01) {
-        return serialData;
-    }
-    if (addr == 0xFF02) {
-        return serialControl;
-    }
     if (addr >= 0xFF80 && addr <= 0xFFFE) {
         return rom->mbc->HRAM[addr - 0xFF80];
     }
@@ -2283,6 +2292,7 @@ void GbCPU::write(uint16_t addr, uint8_t value) {
 
     if (addr >= 0x8000 && addr <= 0x9FFF) {
         ppu->writeVRAM(addr, value);
+        return;
     }
 
     if (addr >= 0xFE00 && addr <= 0xFE9F) {
@@ -2298,10 +2308,11 @@ void GbCPU::write(uint16_t addr, uint8_t value) {
         return;
     }
 
-    if (addr >= 0xFF40 && addr <= 0xFF4B) {
+    if ((addr >= 0xFF40 && addr <= 0xFF4B) || addr == 0xFF4F || (addr >= 0xFF68 && addr <= 0xFF6B)) {
         ppu->writeRegister(addr, value);
         return;
     }
+    
     if (addr == 0xFF04) {
         DIV = 0;
         DIVInternal = 0;
@@ -2338,7 +2349,19 @@ void GbCPU::write(uint16_t addr, uint8_t value) {
             serialControl = value;
         }
         if (value == 0x81) {
-            DebugPrintLog("GAMEBOY", "Serial output: %c (0x%02x)", serialData, serialData);
+            if (serialData == 0x0A) {
+                DebugPrintLog("GAMEBOY", "Serial output: %s", serialBuffer.c_str());
+                serialBuffer.clear();
+            } else {
+                serialBuffer += (char)(serialData);
+            }
+        }
+        return;
+    }
+    if (addr == 0xFF50) {
+        if (value != 0) {
+            useBootROM = false;
+            DebugPrintLog("CPU", "Boot ROM done, jumping to game");
         }
         return;
     }
@@ -2352,7 +2375,6 @@ void GbCPU::write(uint16_t addr, uint8_t value) {
     }
     rom->mbc->cpuWrite(addr, value);
 }
-
 
 void GbCPU::push(uint8_t value) {
     SP--;

@@ -25,6 +25,9 @@ Supported mappers:
 ## Game Boy
 The whole GB support right now is kinda bad, so everything is WIP.
 
+**Credits:**
+- [SameBoy](https://github.com/LIJI32/SameBoy) For the BootROM used in DMG and CGB.
+
 # Building
 
 ## Step 1: Install Dependencies

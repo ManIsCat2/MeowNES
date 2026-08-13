@@ -2080,7 +2080,7 @@ void NesCPU::write(uint16_t addr, uint8_t value) {
                     ppu->scrollFineX = value & 7;
                     ppu->TransferAddr = (ppu->TransferAddr & 0x7fe0) | (value >> 3);
                 } else {
-                    ppu->TransferAddr = (ushort)((ppu->TransferAddr & 0xc1f) | (((value & 0xF8) << 2) | ((value & 7) << 12)));
+                    ppu->TransferAddr = ((ppu->TransferAddr & 0xc1f) | (((value & 0xF8) << 2) | ((value & 7) << 12)));
                 }
                 ppu->WriteLatch = !ppu->WriteLatch;
                 ppu->dataBus = value;

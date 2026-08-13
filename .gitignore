@@ -16,3 +16,5 @@ imgui.ini
 tests/*
 saves/*
 *.sh
+compile_commands.json
+!bootroms/*
