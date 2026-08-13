@@ -28,9 +28,10 @@ void GbCPU::reset() {
     TMA = 0;
     TAC = 0;
 
+    KEY0 = 0;
     KEY1 = 0;
     doubleSpeed = false;
-    SVBK = 0;
+    SVBK = 1;
     HDMAActive = false;
     HDMALength = 0;
 
@@ -2264,6 +2265,9 @@ uint8_t GbCPU::read(uint16_t addr) {
         return ppu->readRegister(addr);
     }
 
+    if (addr == 0xFF4C) {
+        return KEY0;
+    }
     if (addr == 0xFF4D) {
         return KEY1 | (doubleSpeed ? 0x80 : 0x00) | 0x7E;
     }
@@ -2276,10 +2280,6 @@ uint8_t GbCPU::read(uint16_t addr) {
             case 0xFF54: return HDMADst & 0xFF;
             case 0xFF55: return HDMALength | (HDMAActive ? 0x00 : 0x80);
         }
-    }
-
-    if (addr == 0xFF70) {
-        return SVBK | 0xF8;
     }
     
     if (addr == 0xFF04) {
@@ -2297,8 +2297,23 @@ uint8_t GbCPU::read(uint16_t addr) {
     if (addr >= 0xFF10 && addr <= 0xFF3F) { // apu
         return 0;
     }
+    if (addr >= 0xC000 && addr <= 0xCFFF) {
+        return rom->mbc->WRAM[addr - 0xC000];
+    }
+    if (addr >= 0xD000 && addr <= 0xDFFF) {
+        if (rom->isCGB) {
+            uint8_t bank = SVBK & 0x07;
+            if (bank == 0) bank = 1;
+            return rom->mbc->WRAM[(bank * 0x1000) + (addr - 0xD000)];
+        } else {
+            return rom->mbc->WRAM[addr - 0xC000];
+        }
+    }
     if (addr >= 0xE000 && addr <= 0xFDFF) {
-        return rom->mbc->WRAM[addr - 0xE000];
+        return read(addr - 0x2000);
+    }
+    if (addr == 0xFF70) {
+        return rom->isCGB ? (SVBK | 0xF8) : 0xFF;
     }
     if (addr >= 0xFF80 && addr <= 0xFFFE) {
         return rom->mbc->HRAM[addr - 0xFF80];
@@ -2335,8 +2350,17 @@ void GbCPU::write(uint16_t addr, uint8_t value) {
         return;
     }
 
+    if (addr == 0xFF4C) {
+        if (rom->isCGB) {
+            KEY0 = value;
+        }
+        return;
+    }
+
     if (addr == 0xFF4D) {
-        KEY1 = (KEY1 & 0x80) | (value & 0x01);
+        if (rom->isCGB) {
+            KEY1 = (KEY1 & 0x80) | (value & 0x01);
+        }
         return;
     }
 
@@ -2374,11 +2398,6 @@ void GbCPU::write(uint16_t addr, uint8_t value) {
         return;
     }
 
-    if (addr == 0xFF70) {
-        SVBK = value & 0x07;
-        return;
-    }
-    
     if (addr == 0xFF04) {
         DIV = 0;
         DIVInternal = 0;
@@ -2399,8 +2418,28 @@ void GbCPU::write(uint16_t addr, uint8_t value) {
     if (addr >= 0xFF10 && addr <= 0xFF3F) { // apu
         return;
     }
+    if (addr >= 0xC000 && addr <= 0xCFFF) {
+        rom->mbc->WRAM[addr - 0xC000] = value;
+        return;
+    }
+    if (addr >= 0xD000 && addr <= 0xDFFF) {
+        if (rom->isCGB) {
+            uint8_t bank = SVBK & 0x07;
+            if (bank == 0) bank = 1;
+            rom->mbc->WRAM[(bank * 0x1000) + (addr - 0xD000)] = value;
+        } else {
+            rom->mbc->WRAM[addr - 0xC000] = value;
+        }
+        return;
+    }
     if (addr >= 0xE000 && addr <= 0xFDFF) {
-        rom->mbc->WRAM[addr - 0xE000] = value;
+        write(addr - 0x2000, value);
+        return;
+    }
+    if (addr == 0xFF70) {
+        if (rom->isCGB) {
+            SVBK = value & 0x07;
+        }
         return;
     }
     if (addr == 0xFF01) {

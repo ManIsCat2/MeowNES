@@ -31,6 +31,7 @@ public:
     uint8_t EIPending = 0;
     bool HALTBug = false;
 
+    uint8_t KEY0 = 0;
     uint8_t KEY1 = 0;
     bool doubleSpeed = false;
     uint8_t SVBK = 0;

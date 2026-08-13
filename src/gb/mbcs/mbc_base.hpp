@@ -12,7 +12,7 @@ public:
 
     MemPage CPUPages[256];
     uint8_t *cartRAM = nullptr;
-    uint8_t WRAM[8192];
+    uint8_t WRAM[0x8000];
     uint8_t HRAM[128];
 
     virtual ~MBCBase();

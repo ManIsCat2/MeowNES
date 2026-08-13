@@ -23,6 +23,12 @@ void MBC3::reset() {
     rtcDayLow = 0;
     rtcDayHigh = 0;
 
+    latchedSeconds = 0;
+    latchedMinutes = 0;
+    latchedHours = 0;
+    latchedDayLow = 0;
+    latchedDayHigh = 0;
+
     mapCPUMemory(0x0000, 0x3FFF, getGBRom()->ROM, 0, false);
     updateBanks();
 }
