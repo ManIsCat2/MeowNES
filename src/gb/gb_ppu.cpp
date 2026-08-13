@@ -51,6 +51,7 @@ void GbPPU::reset() {
     VBK = 0;
     BCPS = 0; BCPD = 0;
     OCPS = 0; OCPD = 0;
+    OPRI = 0;
     LCDC = 0x91;
     STAT = 0x85;
     SCY  = 0x00;
@@ -278,10 +279,13 @@ void GbPPU::RenderScanline() {
         }
     }
 
-    std::sort(sprites, sprites + spritesFound, [](const OAMSprite &a, const OAMSprite &b) {
-        if (a.x != b.x) {
-            return a.x > b.x;
+    std::sort(sprites, sprites + spritesFound, [&](const OAMSprite &a, const OAMSprite &b) {
+        if ((OPRI & 0x01 && isCGB) || !isCGB) {
+            if (a.x != b.x) {
+                return a.x > b.x;
+            }
         }
+    
         return a.index > b.index;
     });
 
@@ -391,6 +395,7 @@ uint8_t GbPPU::readRegister(uint16_t addr) {
         case 0xFF69: return BGPaletteRAM[BCPS & 0x3F];
         case 0xFF6A: return OCPS | 0x40;
         case 0xFF6B: return SPPaletteRAM[OCPS & 0x3F];
+        case 0xFF6C: return OPRI | 0xFE;
         default: return 0xFF;
     }
 }
@@ -444,7 +449,6 @@ void GbPPU::writeRegister(uint16_t addr, uint8_t value) {
         case 0xFF49: OBP1 = value; break;
         case 0xFF4A: WY = value; break;
         case 0xFF4B: WX = value; break;
-        
         case 0xFF4F: VBK = value & 1; break;
         case 0xFF68: BCPS = value; break;
         case 0xFF69: {
@@ -464,5 +468,6 @@ void GbPPU::writeRegister(uint16_t addr, uint8_t value) {
             }
             break;
         }
+        case 0xFF6C: OPRI = value & 1; break;
     }
 }

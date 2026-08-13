@@ -9,7 +9,7 @@ ifeq ($(OS),Windows_NT)
 	WINDEPLOYQT := $(shell command -v windeployqt6 2>/dev/null || command -v windeployqt 2>/dev/null)
 else
     CXX := clang++
-    CXXFLAGS := -Wall -Wextra -Wno-parentheses -O3 -Iinclude #-g -fsanitize=address -fsanitize=undefined
+    CXXFLAGS := -Wall -Wextra -Wno-parentheses -O3 -Iinclude -g #-fsanitize=address -fsanitize=undefined
     EXEEXT :=
 endif
 

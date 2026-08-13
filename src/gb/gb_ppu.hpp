@@ -29,6 +29,7 @@ public:
     uint8_t VBK = 0;
     uint8_t BCPS = 0, BCPD = 0;
     uint8_t OCPS = 0, OCPD = 0;
+    uint8_t OPRI = 0;
     uint8_t BGPaletteRAM[64];
     uint8_t SPPaletteRAM[64];
 

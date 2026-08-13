@@ -28,7 +28,11 @@ void GbCPU::reset() {
     TMA = 0;
     TAC = 0;
 
-    timerCounter = 0;
+    KEY1 = 0;
+    doubleSpeed = false;
+    SVBK = 0;
+    HDMAActive = false;
+    HDMALength = 0;
 
     serialData = 0;
     serialControl = 0;
@@ -2256,8 +2260,26 @@ uint8_t GbCPU::read(uint16_t addr) {
         return IF | 0xE0;
     }
     
-    if ((addr >= 0xFF40 && addr <= 0xFF4B) || addr == 0xFF4F || (addr >= 0xFF68 && addr <= 0xFF6B)) {
+    if ((addr >= 0xFF40 && addr <= 0xFF4B) || addr == 0xFF4F || (addr >= 0xFF68 && addr <= 0xFF6C)) {
         return ppu->readRegister(addr);
+    }
+
+    if (addr == 0xFF4D) {
+        return KEY1 | (doubleSpeed ? 0x80 : 0x00) | 0x7E;
+    }
+
+    if (addr >= 0xFF51 && addr <= 0xFF55) {
+        switch (addr) {
+            case 0xFF51: return (HDMASrc >> 8) & 0xFF;
+            case 0xFF52: return HDMASrc & 0xFF;
+            case 0xFF53: return (HDMADst >> 8) & 0xFF;
+            case 0xFF54: return HDMADst & 0xFF;
+            case 0xFF55: return HDMALength | (HDMAActive ? 0x00 : 0x80);
+        }
+    }
+
+    if (addr == 0xFF70) {
+        return SVBK | 0xF8;
     }
     
     if (addr == 0xFF04) {
@@ -2308,8 +2330,52 @@ void GbCPU::write(uint16_t addr, uint8_t value) {
         return;
     }
 
-    if ((addr >= 0xFF40 && addr <= 0xFF4B) || addr == 0xFF4F || (addr >= 0xFF68 && addr <= 0xFF6B)) {
+    if ((addr >= 0xFF40 && addr <= 0xFF4B) || addr == 0xFF4F || (addr >= 0xFF68 && addr <= 0xFF6C)) {
         ppu->writeRegister(addr, value);
+        return;
+    }
+
+    if (addr == 0xFF4D) {
+        KEY1 = (KEY1 & 0x80) | (value & 0x01);
+        return;
+    }
+
+    if (addr >= 0xFF51 && addr <= 0xFF54) {
+        switch (addr) {
+            case 0xFF51: HDMASrc = (HDMASrc & 0x00FF) | (value << 8); break;
+            case 0xFF52: HDMASrc = (HDMASrc & 0xFF00) | (value & 0xF0); break;
+            case 0xFF53: HDMADst = (HDMADst & 0x00FF) | ((value & 0x1F) << 8); break;
+            case 0xFF54: HDMADst = (HDMADst & 0xFF00) | (value & 0xF0); break;
+        }
+        return;
+    }
+
+    if (addr == 0xFF55) {
+        bool isHBlank = (value & 0x80) != 0;
+        uint16_t length = ((value & 0x7F) + 1) * 16;
+
+        if (HDMAActive && isHBlank) {
+            HDMAActive = false;
+            HDMALength = value & 0x7F;
+            return;
+        }
+
+        if (!isHBlank) {
+            for (uint16_t i = 0; i < length; i++) {
+                uint8_t dat = read(HDMASrc + i);
+                write(0x8000 + ((HDMADst + i) & 0x1FFF), dat);
+            }
+            HDMAActive = false;
+            HDMALength = 0xFF;
+        } else {
+            HDMAActive = true;
+            HDMALength = value & 0x7F;
+        }
+        return;
+    }
+
+    if (addr == 0xFF70) {
+        SVBK = value & 0x07;
         return;
     }
     

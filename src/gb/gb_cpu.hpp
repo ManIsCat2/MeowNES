@@ -22,7 +22,6 @@ public:
     bool useBootROM = false;
     bool paused = false;
 
-    uint16_t timerCounter = 0;
     uint8_t DIV = 0;
     uint16_t DIVInternal = 0;
     uint8_t TIMA = 0;
@@ -31,6 +30,14 @@ public:
     bool IME = false;
     uint8_t EIPending = 0;
     bool HALTBug = false;
+
+    uint8_t KEY1 = 0;
+    bool doubleSpeed = false;
+    uint8_t SVBK = 0;
+    bool HDMAActive = false;
+    uint16_t HDMALength = 0;
+    uint16_t HDMASrc = 0;
+    uint16_t HDMADst = 0;
 
     std::string serialBuffer = "";
     uint8_t serialData = 0;
