@@ -1,5 +1,6 @@
 #include "gb_console.hpp"
 #include "../nes/nes_controller.hpp"
+#include "gb_apu.hpp"
 #include "gb_cpu.hpp"
 #include "gb_ppu.hpp"
 #include "gb_rom.hpp"
@@ -52,7 +53,7 @@ void GBConsole::handleController(int id, int key, bool pressed) {
 }
 
 double GBConsole::getAudioOutput(void) {
-    return 0.0;
+    return gbApu.getOutputSample();
 }
 
 QImage *GBConsole::getOutputImage(void) {

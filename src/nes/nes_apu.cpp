@@ -527,7 +527,7 @@ void NesAPU::step() {
     }
 
     clockCounter++;
-    audioSystem.advance();
+    audioSystem.advance(1);
 }
 
 double NesAPU::getOutputSample() {

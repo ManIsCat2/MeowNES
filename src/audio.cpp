@@ -1,10 +1,12 @@
 #include "audio.hpp"
+#include "console.hpp"
 #include "nes.hpp"
 #include "nes/nes_apu.hpp"
 #include "main.hpp"
 
 #define CYCLES_PER_SAMPLE_NTSC (1789773.0 / 44100.0)
 #define CYCLES_PER_SAMPLE_PAL (1662607.0 / 44100.0)
+#define CYCLES_PER_SAMPLE_GB  (4194304.0 / 44100.0)
 
 Audio audioSystem;
 
@@ -59,12 +61,16 @@ void Audio::close() {
     DebugPrintLog("AUDIO", "Closed SDL2 Audio System");
 }
 
-void Audio::advance() {
+void Audio::advance(uint32_t cycles) {
     double cyclesPerSample = CYCLES_PER_SAMPLE_NTSC;
-    if (getRom()->Region == ConsoleRegion::PAL) {
-        cyclesPerSample = CYCLES_PER_SAMPLE_PAL;
+    if (emuConsole->getConsoleType() == ConsoleType::GAMEBOY) {
+        cyclesPerSample = CYCLES_PER_SAMPLE_GB;
+    } else {
+        if (getRom() && getRom()->Region == ConsoleRegion::PAL) {
+            cyclesPerSample = CYCLES_PER_SAMPLE_PAL;
+        }
     }
-    cycleCounter += 1;
+    cycleCounter += cycles;
     while (cycleCounter >= cyclesPerSample) {
         cycleCounter -= cyclesPerSample;
         pushSample();

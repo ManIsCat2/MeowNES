@@ -66,7 +66,7 @@ void MBCBase::loadSRAM(void) {
 }
 
 void MBCBase::initialize(void) {
-    connectBus(&gbCpu, &gbPpu);
+    connectBus(&gbCpu, &gbPpu, nullptr);
 
     uint32_t ramSize = getGBRom()->ramSize;
     if (ramSize) {

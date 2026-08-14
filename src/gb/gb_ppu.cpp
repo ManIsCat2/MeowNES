@@ -40,7 +40,7 @@ GbPPU::~GbPPU() {
 }
 
 void GbPPU::reset() {
-    connectBus(&gbCpu, nullptr);
+    connectBus(&gbCpu, nullptr, nullptr);
 
     memset(VRAM, 0, sizeof(VRAM));
     memset(OAM, 0, sizeof(OAM));

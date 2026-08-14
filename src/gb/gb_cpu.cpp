@@ -1,10 +1,11 @@
 #include "gb_cpu.hpp"
 #include "gb_ppu.hpp"
+#include "gb_apu.hpp"
 
 GbCPU gbCpu;
 
 void GbCPU::reset() {
-    connectBus(nullptr, &gbPpu);
+    connectBus(nullptr, &gbPpu, &gbApu);
     useBootROM = true;
     paused = false;
 
@@ -42,6 +43,7 @@ void GbCPU::reset() {
     halted = false;
 
     ppu->reset();
+    apu->reset();
 }
 
 //#define GBCPU_DBG
@@ -160,6 +162,7 @@ void GbCPU::run(uint32_t maxCycles) {
         cyclesRun += cycles;
         updateTimers(cycles);
         ppu->Step(cycles);
+        apu->step(cycles);
     }
 }
 
@@ -2295,7 +2298,7 @@ uint8_t GbCPU::read(uint16_t addr) {
         return TAC;
     }
     if (addr >= 0xFF10 && addr <= 0xFF3F) { // apu
-        return 0;
+        return apu->read(addr);
     }
     if (addr >= 0xC000 && addr <= 0xCFFF) {
         return rom->mbc->WRAM[addr - 0xC000];
@@ -2416,6 +2419,7 @@ void GbCPU::write(uint16_t addr, uint8_t value) {
         return;
     }
     if (addr >= 0xFF10 && addr <= 0xFF3F) { // apu
+        apu->write(addr, value);
         return;
     }
     if (addr >= 0xC000 && addr <= 0xCFFF) {

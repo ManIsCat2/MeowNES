@@ -14,7 +14,7 @@ public:
     SDL_AudioDeviceID device = 0;
     void init();
     void close();
-    void advance();
+    void advance(uint32_t cycles);
     void pushSample();
 };
 
