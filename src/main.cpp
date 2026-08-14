@@ -100,6 +100,9 @@ const std::array<std::string_view, 3> allowedExts = {
 bool loadConsoleWithGame(const std::string &file) {
     QMainWindow *win = (QMainWindow*)(globalQTWin);
 
+    cpuTimer.stop();
+    romIsLoaded = false;
+
     size_t dotPos = file.find_last_of('.');
     if (dotPos == std::string::npos) {
         romIsLoaded = false;
@@ -132,10 +135,8 @@ bool loadConsoleWithGame(const std::string &file) {
 
     if (matchedExt == ".nes") {
         emuConsole = new NESConsole;
-        win->setWindowTitle("EMeowlator - NES");
     } else if (matchedExt == ".gb" || matchedExt == ".gbc") {
         emuConsole = new GBConsole;
-        win->setWindowTitle("EMeowlator - Game Boy");
     } else {
         romIsLoaded = false;
         return false;
@@ -695,7 +696,6 @@ int main(int argc, char *argv[]) {
                 emuConsole->reset();
             }
             romIsLoaded = false;
-            window.setWindowTitle("EMeowlator");
         }
     });
     QObject::connect(gameResetAction, &QAction::triggered, [&]() {

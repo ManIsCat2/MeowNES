@@ -37,6 +37,8 @@ public:
     bool windowYLatch = false;
     int scanlineCounter = 0;
     uint32_t frameBuffer[NES_NTSC_OUT_WIDTH(160) * 144];
+    uint32_t backBuffer[160 * 144];
+    uint8_t palIndexBuf[160 * 144];
     QImage *rawOutputImage = nullptr;
     QImage *filteredOutputImage = nullptr;
 

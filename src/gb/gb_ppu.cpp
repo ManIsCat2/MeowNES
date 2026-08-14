@@ -161,7 +161,8 @@ void GbPPU::RenderScanline() {
 
     if (!isCGB && !masterPriority) {
         for (int pixel = 0; pixel < 160; pixel++) {
-            frameBuffer[LY * 160 + pixel] = gbPalette[0];
+            backBuffer[LY * 160 + pixel] = gbPalette[0];
+            palIndexBuf[LY * 160 + pixel] = 0;
         }
         return;
     }
@@ -239,15 +240,16 @@ void GbPPU::RenderScanline() {
         bgLineColorIds[pixel] = colorId;
         bgPriorityLine[pixel] = isCGB ? cgbBgOamPrior : false;
 
+        uint8_t colorPaletteShade = (BGP >> (colorId * 2)) & 0x03;
         if (isCGB) {
             uint8_t palBase = (cgbPalette * 8) + (colorId * 2);
             uint16_t colorData = BGPaletteRAM[palBase] | (BGPaletteRAM[palBase + 1] << 8);
             uint32_t finalColor = 0xFF000000 | (((colorData & 0x001F) << 3) << 16) | (((colorData & 0x03E0) >> 2) << 8) | (((colorData & 0x7C00) >> 7));
-            frameBuffer[LY * 160 + pixel] = finalColor;
+            backBuffer[LY * 160 + pixel] = finalColor;
         } else {
-            uint8_t colorPaletteShade = (BGP >> (colorId * 2)) & 0x03;
-            frameBuffer[LY * 160 + pixel] = gbPalette[colorPaletteShade];
+            backBuffer[LY * 160 + pixel] = gbPalette[colorPaletteShade];
         }
+        palIndexBuf[LY * 160 + pixel] = colorPaletteShade;
     }
 
     if (windowDrawn) {
@@ -332,16 +334,17 @@ void GbPPU::RenderScanline() {
                 if (objToBgPriority && bgLineColorIds[pixelX] != 0) continue; 
             }
 
+            uint8_t colorPaletteShade = (paletteReg >> (colorId * 2)) & 0x03;
             if (isCGB) {
                 uint8_t palBase = (cgbPalette * 8) + (colorId * 2);
                 uint16_t colorData = SPPaletteRAM[palBase] | (SPPaletteRAM[palBase + 1] << 8);
                 uint32_t finalColor = 0xFF000000 | (((colorData & 0x001F) << 3) << 16) | (((colorData & 0x03E0) >> 2) << 8) | (((colorData & 0x7C00) >> 7));
                 
-                if (!DisableSprites) frameBuffer[LY * 160 + pixelX] = finalColor;
+                if (!DisableSprites) backBuffer[LY * 160 + pixelX] = finalColor;
             } else {
-                uint8_t colorPaletteShade = (paletteReg >> (colorId * 2)) & 0x03;
-                if (!DisableSprites) frameBuffer[LY * 160 + pixelX] = gbPalette[colorPaletteShade];
+                if (!DisableSprites) backBuffer[LY * 160 + pixelX] = gbPalette[colorPaletteShade];
             }
+            palIndexBuf[LY * 160 + pixelX] = colorPaletteShade;
         }
     }
 }
@@ -350,11 +353,12 @@ void GbPPU::blitPixels() {
     for (int y = 0; y < 144; y++) {
         for (int x = 0; x < 160; x++) {
             int i = y * 160 + x;
-            vfilter->applyFilter(&frameBuffer[i], x, y);
+            uint32_t pixel = backBuffer[i];
+            vfilter->applyFilter(&pixel, x, y);
+            frameBuffer[i] = pixel;
         }
     }
 }
-
 uint8_t GbPPU::readVRAM(uint16_t addr) {
     uint16_t offset = (addr - 0x8000) + (VBK * 8192);
     return VRAM[offset];

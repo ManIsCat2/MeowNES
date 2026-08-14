@@ -2306,7 +2306,7 @@ uint8_t GbCPU::read(uint16_t addr) {
             if (bank == 0) bank = 1;
             return rom->mbc->WRAM[(bank * 0x1000) + (addr - 0xD000)];
         } else {
-            return rom->mbc->WRAM[addr - 0xC000];
+            return rom->mbc->cpuRead(addr);
         }
     }
     if (addr >= 0xE000 && addr <= 0xFDFF) {
@@ -2428,7 +2428,7 @@ void GbCPU::write(uint16_t addr, uint8_t value) {
             if (bank == 0) bank = 1;
             rom->mbc->WRAM[(bank * 0x1000) + (addr - 0xD000)] = value;
         } else {
-            rom->mbc->WRAM[addr - 0xC000] = value;
+            rom->mbc->cpuWrite(addr, value);
         }
         return;
     }

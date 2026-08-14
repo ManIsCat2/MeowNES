@@ -1,4 +1,5 @@
 #include "gb_rom.hpp"
+#include "mbcs/mbc5.hpp"
 #include "mbcs/mbcs.hpp"
 #include "../main.hpp"
 #include <fstream>
@@ -141,6 +142,7 @@ bool GbROM::load(const std::string &filename) {
         case 0x1C:
         case 0x1D:
         case 0x1E:
+            mbc = new MBC5();
             break;
     }
 
