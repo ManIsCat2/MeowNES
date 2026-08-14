@@ -88,6 +88,12 @@ public:
 
     double getOutputSample();
 
+    float pulse1Volume = 50.0f;
+    float pulse2Volume = 50.0f;
+    float waveVolume = 50.0f;
+    float noiseVolume = 50.0f;
+    float masterVolume = 50.0f;
+
     GbPulseChannel pulse1;
     GbPulseChannel pulse2;
     GbWaveChannel  wave;

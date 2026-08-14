@@ -1,3 +1,4 @@
+#include "gb/gb_apu.hpp"
 #include "nes/nes_cpu.hpp"
 #include "nes/nes_apu.hpp"
 #include "nes/nes_rom.hpp"
@@ -251,35 +252,48 @@ void ShowAudioConfigDialog(QWidget* parent) {
     volumeLayout->setSpacing(5);
     volumeLayout->setContentsMargins(10, 10, 10, 10);
 
+    std::vector<const char*> volumeNames;
+    float *volumePtrs[6];
     if (isNES) {
-        const std::array<const char*, 6> volumeNames = {"Square 1", "Square 2", "Triangle", "Noise", "DMC", "Master"};
-        float *volumePtrs[] = { &nesApu.pulse1Volume, &nesApu.pulse2Volume, &nesApu.triangleVolume, &nesApu.noiseVolume, &nesApu.dmcVolume, &nesApu.masterVolume };
-
-        for (int i = 0; i < 6; ++i) {
-            QWidget *pairWidget = new QWidget(volumeBox);
-            QVBoxLayout *pairLayout = new QVBoxLayout(pairWidget);
-            pairLayout->setContentsMargins(0, 0, 0, 0);
-            pairLayout->setSpacing(5);
-
-            QLabel *label = new QLabel(volumeNames[i], pairWidget);
-            label->setAlignment(Qt::AlignHCenter);
-            pairLayout->addWidget(label);
-
-            QSlider *slider = new QSlider(Qt::Vertical, pairWidget);
-            slider->setRange(0, 50);
-            slider->setValue((int)(*volumePtrs[i]));
-            slider->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
-            slider->setTickPosition(QSlider::TicksRight);
-            slider->setTickInterval(10);
-            pairLayout->addWidget(slider);
-
-            QObject::connect(slider, &QSlider::valueChanged, [volumePtrs, i](int value) {
-                *volumePtrs[i] = (float)(value);
-            });
-
-            volumeLayout->addWidget(pairWidget);
-        }
+        volumeNames = {"Square 1", "Square 2", "Triangle", "Noise", "DMC", "Master"};
+        volumePtrs[0] = &nesApu.pulse1Volume;
+        volumePtrs[1] = &nesApu.pulse2Volume;
+        volumePtrs[2] = &nesApu.triangleVolume;
+        volumePtrs[3] = &nesApu.noiseVolume;
+        volumePtrs[4] = &nesApu.dmcVolume;
+        volumePtrs[5] = &nesApu.masterVolume;
     } else if (type == ConsoleType::GAMEBOY) {
+        volumeNames = {"Square 1", "Square 2", "Wave", "Noise", "Master"};
+        volumePtrs[0] = &gbApu.pulse1Volume;
+        volumePtrs[1] = &gbApu.pulse2Volume;
+        volumePtrs[2] = &gbApu.waveVolume;
+        volumePtrs[3] = &gbApu.noiseVolume;
+        volumePtrs[4] = &gbApu.masterVolume;
+    }
+
+    for (size_t i = 0; i < volumeNames.size(); ++i) {
+        QWidget *pairWidget = new QWidget(volumeBox);
+        QVBoxLayout *pairLayout = new QVBoxLayout(pairWidget);
+        pairLayout->setContentsMargins(0, 0, 0, 0);
+        pairLayout->setSpacing(5);
+
+        QLabel *label = new QLabel(volumeNames[i], pairWidget);
+        label->setAlignment(Qt::AlignHCenter);
+        pairLayout->addWidget(label);
+
+        QSlider *slider = new QSlider(Qt::Vertical, pairWidget);
+        slider->setRange(0, 50);
+        slider->setValue((int)(*volumePtrs[i]));
+        slider->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+        slider->setTickPosition(QSlider::TicksRight);
+        slider->setTickInterval(10);
+        pairLayout->addWidget(slider);
+
+        QObject::connect(slider, &QSlider::valueChanged, [volumePtrs, i](int value) {
+            *volumePtrs[i] = (float)(value);
+        });
+
+        volumeLayout->addWidget(pairWidget);
     }
 
     volumeBox->setLayout(volumeLayout);

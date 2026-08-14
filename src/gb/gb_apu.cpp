@@ -41,6 +41,7 @@ void GbAPU::step(uint32_t cycles) {
 
     int remaining1 = cycles;
     while (remaining1 >= pulse1.timer) {
+        if (pulse1.timer <= 0) pulse1.timer = 4;
         remaining1 -= pulse1.timer;
         pulse1.timer = (2048 - pulse1.frequency) * 4;
         pulse1.dutySequenceIdx = (pulse1.dutySequenceIdx + 1) & 7;
@@ -49,6 +50,7 @@ void GbAPU::step(uint32_t cycles) {
 
     int remaining2 = cycles;
     while (remaining2 >= pulse2.timer) {
+        if (pulse2.timer <= 0) pulse2.timer = 4;
         remaining2 -= pulse2.timer;
         pulse2.timer = (2048 - pulse2.frequency) * 4;
         pulse2.dutySequenceIdx = (pulse2.dutySequenceIdx + 1) & 7;
@@ -57,6 +59,7 @@ void GbAPU::step(uint32_t cycles) {
 
     int remaining3 = cycles;
     while (remaining3 >= wave.timer) {
+        if (wave.timer <= 0) wave.timer = 2;
         remaining3 -= wave.timer;
         wave.timer = (2048 - wave.frequency) * 2;
         wave.wavePos = (wave.wavePos + 1) & 31;
@@ -65,16 +68,9 @@ void GbAPU::step(uint32_t cycles) {
 
     int remaining4 = cycles;
     while (remaining4 >= noise.timer) {
+        if (noise.timer <= 0) noise.timer = 8;
         remaining4 -= noise.timer;
         noise.timer = (NoiseDivisors[noise.clockDivider] << noise.clockShift);
-        
-        uint16_t result = (noise.lfsr & 1) ^ ((noise.lfsr >> 1) & 1);
-        noise.lfsr >>= 1;
-        noise.lfsr |= (result << 14);
-        if (noise.lfsrWidth) {
-            noise.lfsr &= ~(1 << 6);
-            noise.lfsr |= (result << 6);
-        }
     }
     noise.timer -= remaining4;
 
@@ -360,11 +356,11 @@ void GbAPU::write(uint16_t addr, uint8_t data) {
 double GbAPU::getOutputSample() {
     if (!masterPower) return 0.0;
 
-    double s1 = pulse1.getSample();
-    double s2 = pulse2.getSample();
-    double s3 = wave.getSample();
-    double s4 = noise.getSample();
+    double s1 = pulse1.getSample() * (pulse1Volume / 50.0);
+    double s2 = pulse2.getSample() * (pulse2Volume / 50.0);
+    double s3 = wave.getSample() * (waveVolume / 50.0);
+    double s4 = noise.getSample() * (noiseVolume / 50.0);
     double mixed = (s1 + s2 + s3 + s4) / 4.0;
 
-    return mixed;
+    return mixed * (masterVolume / 50.0);
 }
