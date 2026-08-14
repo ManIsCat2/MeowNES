@@ -15,7 +15,6 @@ public:
     uint16_t getPRGBankSize() override { return 0x2000; }
 
     void clockCPU(void) override;
-
 private:
     enum Variant {
         NAMCO_163,
@@ -26,8 +25,6 @@ private:
 
     Variant variant;
     uint8_t writeProtect;
-    bool lowChrNtMode;
-    bool highChrNtMode;
     uint16_t irqCounter;
 
     void updateWorkRam();

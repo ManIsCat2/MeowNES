@@ -9,8 +9,6 @@ Namco163::Namco163() {
 void Namco163::reset() {
     variant = NAMCO_163;
     writeProtect = 0;
-    lowChrNtMode = false;
-    highChrNtMode = false;
     irqCounter = 0;
     setPRGBank(3, -1);
     updateWorkRam();
@@ -116,9 +114,6 @@ void Namco163::cpuWrite(uint16_t addr, uint8_t value) {
 
         case 0xE800:
             setPRGBank(1, value & 0x3F);
-
-            lowChrNtMode  = value & 0x40;
-            highChrNtMode = value & 0x80;
             break;
 
         case 0xF000:

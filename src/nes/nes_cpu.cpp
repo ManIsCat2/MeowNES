@@ -36,7 +36,7 @@ void NesCPU::run(uint32_t maxCycles) {
         if (!prevNMIDetect && NMIDetector) {
             opcode = 0x00;
             doNMI = true;
-        } else if ((IRQPending || apu->DMCIrqPending || apu->IRQPending) && !(P & Flags::I)) {
+        } else if ((IRQPending || apu->dmc.DMCIrqPending || apu->IRQPending) && !(P & Flags::I)) {
             opcode = 0x00;
             doIRQ = true;
         } else {

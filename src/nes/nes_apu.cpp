@@ -10,180 +10,135 @@ const uint8_t DutyTable[4][8] = {
     {0, 1, 1, 1, 1, 0, 0, 0}, 
     {1, 0, 0, 1, 1, 1, 1, 1}  
 };
+    
 const uint8_t LengthTable[32] = {
     10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14,
     12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30
 };
+    
 const uint8_t TriTable[32] = {
     15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
 };
+    
 const uint16_t NoiseTimerTableNTSC[16] = {
     4, 8, 16, 32, 64, 96, 128, 160, 202, 254, 380, 508, 762, 1016, 2034, 4068
 };
+    
 const uint16_t NoiseTimerTablePAL[16] = {
     4, 8, 14, 30, 60, 88, 118, 148, 188, 236, 354, 472, 708, 944, 1890, 3778
 };
+    
 const uint16_t DMCRateTableNTSC[16] = {
     428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84, 72, 54
 };
+    
 const uint16_t DMCRateTablePAL[16] = {
     398, 354, 316, 298, 276, 236, 210, 198, 176, 148, 132, 118, 98, 78, 66, 50
 };
 
-NesAPU::NesAPU() {}
-NesAPU::~NesAPU() {}
-
-void NesAPU::reset() {
-    connectBus(&nesCpu, nullptr, nullptr);
-    pulse1 = PulseChannel();
-    pulse2 = PulseChannel();
-    triangle = TriangleChannel();
-    noise = NoiseChannel();
-    dmc = DMCChannel(); 
-    clockCounter = 0;
-    frameCounter = 0; 
-    frameMode = 0;
-    IRQInhibit = false;
-    IRQPending = false;
-    DMCIrqPending = false;
-    DMCIrqEnable = false;
-    frameCounterResetDelay = 0;
-    delayedFrameMode = 0;
-    noise.shiftRegister = 1;
-}
-
-void NesAPU::write(uint16_t addr, uint8_t data) {
-    switch (addr) {
-        case 0x4000: pulse1.duty = (data & 0xC0) >> 6; pulse1.lengthHalt = (data & 0x20); pulse1.constantVolume = (data & 0x10); pulse1.volume = (data & 0x0F); break;
-        case 0x4001:
-            pulse1.sweepEnable = (data & 0x80) != 0;
-            pulse1.sweepPeriod = (data >> 4) & 0x07;
-            pulse1.sweepNegate = (data & 0x08) != 0;
-            pulse1.sweepShift  = data & 0x07;
-            pulse1.sweepReload = true;
+void PulseChannel::writeRegister(uint16_t addr, uint8_t data) {
+    uint8_t offset = addr & 0x0003;
+    switch (offset) {
+        case 0:
+            duty = (data & 0xC0) >> 6;
+            lengthHalt = (data & 0x20) != 0;
+            constantVolume = (data & 0x10) != 0;
+            volume = (data & 0x0F);
             break;
-        case 0x4002: pulse1.timerReload = (pulse1.timerReload & 0xFF00) | data; break;
-        case 0x4003: pulse1.timerReload = (pulse1.timerReload & 0x00FF) | ((data & 0x07) << 8); pulse1.timer = pulse1.timerReload + 1; if (pulse1.enable) pulse1.lengthCounter = LengthTable[(data & 0xF8) >> 3]; pulse1.dutySeq = 0; pulse1.envStart = true; break;
-
-        case 0x4004: pulse2.duty = (data & 0xC0) >> 6; pulse2.lengthHalt = (data & 0x20); pulse2.constantVolume = (data & 0x10); pulse2.volume = (data & 0x0F); break;
-        case 0x4005:
-            pulse2.sweepEnable = (data & 0x80) != 0;
-            pulse2.sweepPeriod = (data >> 4) & 0x07;
-            pulse2.sweepNegate = (data & 0x08) != 0;
-            pulse2.sweepShift  = data & 0x07;
-            pulse2.sweepReload = true;
+        case 1:
+            sweepEnable = (data & 0x80) != 0;
+            sweepPeriod = (data >> 4) & 0x07;
+            sweepNegate = (data & 0x08) != 0;
+            sweepShift  = data & 0x07;
+            sweepReload = true;
             break;
-        case 0x4006: pulse2.timerReload = (pulse2.timerReload & 0xFF00) | data; break;
-        case 0x4007: pulse2.timerReload = (pulse2.timerReload & 0x00FF) | ((data & 0x07) << 8); pulse2.timer = pulse2.timerReload + 1; if (pulse2.enable) pulse2.lengthCounter = LengthTable[(data & 0xF8) >> 3]; pulse2.dutySeq = 0; pulse2.envStart = true; break;
-
-        case 0x4008: triangle.lengthHalt = (data & 0x80); triangle.linearReload = data & 0x7F; break;
-        case 0x400A: triangle.timerReload = (triangle.timerReload & 0xFF00) | data; break;
-        case 0x400B: triangle.timerReload = (triangle.timerReload & 0x00FF) | ((data & 0x07) << 8); triangle.timer = triangle.timerReload + 1; if (triangle.enable) triangle.lengthCounter = LengthTable[(data & 0xF8) >> 3]; triangle.linearReloadFlag = true; break;
-
-        case 0x400C: noise.lengthHalt = (data & 0x20); noise.constantVolume = (data & 0x10); noise.volume = (data & 0x0F); break;
-        case 0x400E: {
-            noise.mode = (data & 0x80);
-            uint16_t *noiseTimers = (uint16_t*)(getRom()->Region == ConsoleRegion::NTSC ? NoiseTimerTableNTSC : NoiseTimerTablePAL);
-            noise.timerReload = noiseTimers[data & 0x0F];
+        case 2:
+            timerReload = (timerReload & 0xFF00) | data;
             break;
-        }
-        case 0x400F: if (noise.enable) noise.lengthCounter = LengthTable[(data & 0xF8) >> 3]; noise.envStart = true; break;
-
-        case 0x4010: {
-            DMCIrqEnable = (data & 0x80) != 0;
-            dmc.loop = (data & 0x40) != 0;
-            uint16_t *dmcRates = (uint16_t*)(getRom()->Region == ConsoleRegion::NTSC ? DMCRateTableNTSC : DMCRateTablePAL);
-            dmc.timerReload = dmcRates[data & 0x0F];
-
-            if (!DMCIrqEnable)
-                DMCIrqPending = false;
-            break;
-        }
-
-        case 0x4011:
-            dmc.outputLevel = data & 0x7F;
-            break;
-
-        case 0x4012:
-            dmc.sampleAddress = 0xC000 + (data * 64);
-            break;
-
-        case 0x4013:
-            dmc.sampleLength = (data * 16) + 1;
-            break;
-
-        case 0x4015:
-            pulse1.enable = (data & 0x01) != 0;
-            if (!pulse1.enable) pulse1.lengthCounter = 0;
-
-            pulse2.enable = (data & 0x02) != 0;
-            if (!pulse2.enable) pulse2.lengthCounter = 0;
-
-            triangle.enable = (data & 0x04) != 0;
-            if (!triangle.enable) triangle.lengthCounter = 0;
-
-            noise.enable = (data & 0x08) != 0;
-            if (!noise.enable) noise.lengthCounter = 0;
-
-            if ((data & 0x10) == 0) {
-                dmc.enable = false;
-                dmc.currentLength = 0;
-            } else {
-                dmc.enable = true;
-
-                if (dmc.currentLength == 0) {
-                    dmc.currentAddress = dmc.sampleAddress;
-                    dmc.currentLength = dmc.sampleLength;
-                    dmc.sampleBufferEmpty = true;
-                    dmc.bitsRemaining = 8;
-                }
-            }
-
-            DMCIrqPending = false;
-            break;
-            
-        case 0x4017:
-            delayedFrameMode = (data & 0x80) >> 7;
-            IRQInhibit = (data & 0x40) >> 6;
-            
-            IRQPending = false; 
-            
-            frameCounterResetDelay = (clockCounter & 1) ? 4 : 3;
+        case 3:
+            timerReload = (timerReload & 0x00FF) | ((data & 0x07) << 8);
+            timer = timerReload + 1;
+            if (enable) lengthCounter = LengthTable[(data & 0xF8) >> 3];
+            dutySeq = 0;
+            envStart = true;
             break;
     }
 }
 
-uint8_t NesAPU::read(uint16_t addr) {
-    uint8_t data = 0; 
-    if (addr == 0x4015) {
-        data = (cpu->dataBus & 0x20); 
-        if (pulse1.lengthCounter > 0) data |= 0x01;
-        if (pulse2.lengthCounter > 0) data |= 0x02;
-        if (triangle.lengthCounter > 0) data |= 0x04;
-        if (noise.lengthCounter > 0) data |= 0x08;
-        
-        if (dmc.currentLength > 0) data |= 0x10;
-        
-        if (IRQPending) data |= 0x40; 
-        if (DMCIrqPending) data |= 0x80; 
-        
-        IRQPending = false; 
+void PulseChannel::clockTimer() {
+    if (timer > 0) {
+        timer--;
+    } else {
+        timer = timerReload;
+        dutySeq = (dutySeq + 1) & 7;
     }
-    return data;
 }
 
-bool NesAPU::pulseSweepMuted(PulseChannel &p, bool isPulse1) {
-    if (p.timerReload < 8)
-        return true;
+void PulseChannel::clockQuarterFrame() {
+    clockEnvelope();
+}
 
-    if (!p.sweepEnable || p.sweepShift == 0)
-        return false;
+void PulseChannel::clockHalfFrame() {
+    if (lengthCounter > 0 && !lengthHalt) lengthCounter--;
+    clockSweep();
+}
 
-    uint16_t change = p.timerReload >> p.sweepShift;
-    uint16_t target = p.timerReload;
+void PulseChannel::clockEnvelope() {
+    if (envStart) {
+        envStart = false;
+        envVol = 15;
+        envDivider = volume;
+    } else {
+        if (envDivider > 0) {
+            envDivider--;
+        } else {
+            envDivider = volume;
+            if (envVol > 0) envVol--;
+            else if (lengthHalt) envVol = 15;
+        }
+    }
+}
 
-    if (p.sweepNegate) {
+void PulseChannel::clockSweep() {
+    if (sweepReload) {
+        sweepReload = false;
+        sweepDivider = sweepPeriod == 0 ? 8 : sweepPeriod;
+        return;
+    }
+
+    if (sweepDivider > 0) {
+        sweepDivider--;
+        return;
+    }
+
+    sweepDivider = sweepPeriod == 0 ? 8 : sweepPeriod;
+
+    if (!sweepEnable || sweepShift == 0 || timerReload < 8) return;
+
+    uint16_t change = timerReload >> sweepShift;
+    uint16_t target = timerReload;
+
+    if (sweepNegate) {
+        target -= change;
+        if (isPulse1) target--;
+    } else {
+        target += change;
+    }
+
+    if (target <= 0x7FF) {
+        timerReload = target;
+    }
+}
+
+bool PulseChannel::isMuted() const {
+    if (timerReload < 8) return true;
+    if (!sweepEnable || sweepShift == 0) return false;
+
+    uint16_t change = timerReload >> sweepShift;
+    uint16_t target = timerReload;
+
+    if (sweepNegate) {
         target -= change;
         if (isPulse1) target--;
     } else {
@@ -193,126 +148,306 @@ bool NesAPU::pulseSweepMuted(PulseChannel &p, bool isPulse1) {
     return target > 0x7FF;
 }
 
-void NesAPU::clockSweep(PulseChannel &p, bool isPulse1) {
-    if (p.sweepReload) {
-        p.sweepReload = false;
-        p.sweepDivider = p.sweepPeriod == 0 ? 8 : p.sweepPeriod;
-        return;
-    }
-
-    if (p.sweepDivider > 0) {
-        p.sweepDivider--;
-        return;
-    }
-
-    p.sweepDivider = p.sweepPeriod == 0 ? 8 : p.sweepPeriod;
-
-    if (!p.sweepEnable || p.sweepShift == 0 || p.timerReload < 8)
-        return;
-
-    uint16_t change = p.timerReload >> p.sweepShift;
-    uint16_t target = p.timerReload;
-
-    if (p.sweepNegate) {
-        target -= change;
-        if (isPulse1) target--;
-    } else {
-        target += change;
-    }
-
-    if (target > 0x7FF) {
-        return;
-    }
-
-    p.timerReload = target;
+double PulseChannel::getSample() const {
+    if (!enable || lengthCounter == 0 || isMuted()) return 0.0;
+    return DutyTable[duty][dutySeq] ? (constantVolume ? volume : envVol) : 0.0;
 }
 
-void NesAPU::clockDMC() {
-    if (dmc.sampleBufferEmpty && dmc.currentLength > 0) {
-        dmc.sampleBuffer = cpu->read(dmc.currentAddress);
-        dmc.sampleBufferEmpty = false;
 
-        dmc.currentAddress++;
-        if (dmc.currentAddress == 0)
-            dmc.currentAddress = 0x8000;
+void TriangleChannel::writeRegister(uint16_t addr, uint8_t data) {
+    uint8_t offset = addr & 0x0003;
+    switch (offset) {
+        case 0:
+            lengthHalt = (data & 0x80) != 0;
+            linearReload = data & 0x7F;
+            break;
+        case 2:
+            timerReload = (timerReload & 0xFF00) | data;
+            break;
+        case 3:
+            timerReload = (timerReload & 0x00FF) | ((data & 0x07) << 8);
+            timer = timerReload + 1;
+            if (enable) lengthCounter = LengthTable[(data & 0xF8) >> 3];
+            linearReloadFlag = true;
+            break;
+    }
+}
 
-        dmc.currentLength--;
+void TriangleChannel::clockTimer() {
+    if (timer > 0) {
+        timer--;
+    } else {
+        timer = timerReload;
+        if (linearCounter > 0 && lengthCounter > 0 && timerReload >= 2) {
+            dutySeq = (dutySeq + 1) % 32;
+        }
+    }
+}
 
-        if (dmc.currentLength == 0) {
-            if (dmc.loop) {
-                dmc.currentAddress = dmc.sampleAddress;
-                dmc.currentLength = dmc.sampleLength;
+void TriangleChannel::clockQuarterFrame() {
+    if (linearReloadFlag) {
+        linearCounter = linearReload;
+    } else if (linearCounter > 0) {
+        linearCounter--;
+    }
+    if (!lengthHalt) {
+        linearReloadFlag = false;
+    }
+}
+
+void TriangleChannel::clockHalfFrame() {
+    if (lengthCounter > 0 && !lengthHalt) {
+        lengthCounter--;
+    }
+}
+
+double TriangleChannel::getSample() const {
+    if (!enable || lengthCounter == 0 || linearCounter == 0) return 0.0;
+    return TriTable[dutySeq];
+}
+
+
+void NoiseChannel::writeRegister(uint16_t addr, uint8_t data, bool isNTSC) {
+    uint8_t offset = addr & 0x0003;
+    switch (offset) {
+        case 0:
+            lengthHalt = (data & 0x20) != 0;
+            constantVolume = (data & 0x10) != 0;
+            volume = (data & 0x0F);
+            break;
+        case 2:
+            mode = (data & 0x80) != 0;
+            timerReload = isNTSC ? NoiseTimerTableNTSC[data & 0x0F] : NoiseTimerTablePAL[data & 0x0F];
+            break;
+        case 3:
+            if (enable) lengthCounter = LengthTable[(data & 0xF8) >> 3];
+            envStart = true;
+            break;
+    }
+}
+
+void NoiseChannel::clockTimer() {
+    if (timer > 0) {
+        timer--;
+    } else {
+        timer = timerReload;
+        uint16_t tap = mode ? 6 : 1;
+        uint16_t feedback = (shiftRegister & 1) ^ ((shiftRegister >> tap) & 1);
+        shiftRegister >>= 1;
+        shiftRegister |= (feedback << 14);
+    }
+}
+
+void NoiseChannel::clockQuarterFrame() {
+    clockEnvelope();
+}
+
+void NoiseChannel::clockHalfFrame() {
+    if (lengthCounter > 0 && !lengthHalt) {
+        lengthCounter--;
+    }
+}
+
+void NoiseChannel::clockEnvelope() {
+    if (envStart) {
+        envStart = false;
+        envVol = 15;
+        envDivider = volume;
+    } else {
+        if (envDivider > 0) {
+            envDivider--;
+        } else {
+            envDivider = volume;
+            if (envVol > 0) envVol--;
+            else if (lengthHalt) envVol = 15;
+        }
+    }
+}
+
+double NoiseChannel::getSample() const {
+    if (!enable || lengthCounter == 0 || (shiftRegister & 0x0001) != 0) return 0.0;
+    return constantVolume ? volume : envVol;
+}
+
+
+void DMCChannel::writeRegister(uint16_t addr, uint8_t data, bool isNTSC) {
+    uint8_t offset = addr & 0x0003;
+    switch (offset) {
+        case 0:
+            DMCIrqEnable = (data & 0x80) != 0;
+            loop = (data & 0x40) != 0;
+            timerReload = isNTSC ? DMCRateTableNTSC[data & 0x0F] : DMCRateTablePAL[data & 0x0F];
+            if (!DMCIrqEnable) DMCIrqPending = false;
+            break;
+        case 1:
+            outputLevel = data & 0x7F;
+            break;
+        case 2:
+            sampleAddress = 0xC000 + (data * 64);
+            break;
+        case 3:
+            sampleLength = (data * 16) + 1;
+            break;
+    }
+}
+
+void DMCChannel::setEnabled(bool state) {
+    enable = state;
+    if (!enable) {
+        currentLength = 0;
+    } else {
+        if (currentLength == 0) {
+            currentAddress = sampleAddress;
+            currentLength = sampleLength;
+            sampleBufferEmpty = true;
+            bitsRemaining = 8;
+        }
+    }
+}
+
+void DMCChannel::clockTimer(NesCPU* cpu) {
+    if (sampleBufferEmpty && currentLength > 0) {
+        sampleBuffer = cpu->read(currentAddress);
+        sampleBufferEmpty = false;
+
+        currentAddress++;
+        if (currentAddress == 0) currentAddress = 0x8000;
+
+        currentLength--;
+        if (currentLength == 0) {
+            if (loop) {
+                currentAddress = sampleAddress;
+                currentLength = sampleLength;
             } else if (DMCIrqEnable) {
                 DMCIrqPending = true;
             }
         }
     }
 
-    if (dmc.timer > 0) {
-        dmc.timer--;
+    if (timer > 0) {
+        timer--;
         return;
     }
 
-    dmc.timer = dmc.timerReload;
+    timer = timerReload;
 
-    if (!dmc.silence) {
-        if (dmc.shiftRegister & 1) {
-            if (dmc.outputLevel <= 125)
-                dmc.outputLevel += 2;
+    if (!silence) {
+        if (shiftRegister & 1) {
+            if (outputLevel <= 125) outputLevel += 2;
         } else {
-            if (dmc.outputLevel >= 2)
-                dmc.outputLevel -= 2;
+            if (outputLevel >= 2) outputLevel -= 2;
         }
     }
 
-    dmc.shiftRegister >>= 1;
-    dmc.bitsRemaining--;
+    shiftRegister >>= 1;
+    bitsRemaining--;
 
-    if (dmc.bitsRemaining == 0) {
-        dmc.bitsRemaining = 8;
+    if (bitsRemaining == 0) {
+        bitsRemaining = 8;
 
-        if (dmc.sampleBufferEmpty) {
-            dmc.silence = true;
+        if (sampleBufferEmpty) {
+            silence = true;
         } else {
-            dmc.silence = false;
-            dmc.shiftRegister = dmc.sampleBuffer;
-            dmc.sampleBufferEmpty = true;
+            silence = false;
+            shiftRegister = sampleBuffer;
+            sampleBufferEmpty = true;
         }
     }
 }
 
-void NesAPU::clockEnvelopes() {
-    auto clockEnv = [](auto &c) {
-        if (c.envStart) { c.envStart = false; c.envVol = 15; c.envDivider = c.volume; } 
-        else {
-            if (c.envDivider > 0) c.envDivider--;
-            else {
-                c.envDivider = c.volume;
-                if (c.envVol > 0) c.envVol--;
-                else if (c.lengthHalt) c.envVol = 15; 
-            }
-        }
-    };
-    clockEnv(pulse1);
-    clockEnv(pulse2);
-    clockEnv(noise);
-
-    if (triangle.linearReloadFlag) triangle.linearCounter = triangle.linearReload;
-    else if (triangle.linearCounter > 0) triangle.linearCounter--;
-    if (!triangle.lengthHalt) triangle.linearReloadFlag = false;
+double DMCChannel::getSample() const {
+    if (!enable) return 0.0;
+    return outputLevel;
 }
 
-void NesAPU::clockLengths() {
-    if (pulse1.lengthCounter > 0 && !pulse1.lengthHalt) pulse1.lengthCounter--;
-    if (pulse2.lengthCounter > 0 && !pulse2.lengthHalt) pulse2.lengthCounter--;
-    if (triangle.lengthCounter > 0 && !triangle.lengthHalt) triangle.lengthCounter--;
-    if (noise.lengthCounter > 0 && !noise.lengthHalt) noise.lengthCounter--;
+
+NesAPU::NesAPU() {}
+NesAPU::~NesAPU() {}
+
+void NesAPU::reset() {
+    connectBus(&nesCpu, nullptr, nullptr);
+    pulse1 = PulseChannel(true); 
+    pulse2 = PulseChannel(false);
+    triangle = TriangleChannel();
+    noise = NoiseChannel();
+    dmc = DMCChannel();
+    
+    clockCounter = 0;
+    frameCounter = 0;
+    frameMode = 0;
+    IRQInhibit = false;
+    IRQPending = false;
+    dmc.DMCIrqPending = false;
+    dmc.DMCIrqEnable = false;
+    frameCounterResetDelay = 0;
+    delayedFrameMode = 0;
 }
 
-void NesAPU::clockPulse() {
-    clockLengths();
-    clockSweep(pulse1, true);
-    clockSweep(pulse2, false);
+void NesAPU::write(uint16_t addr, uint8_t data) {
+    bool isNTSC = (getRom()->Region == ConsoleRegion::NTSC);
+
+    if (addr >= 0x4000 && addr <= 0x4003) {
+        pulse1.writeRegister(addr, data);
+    } else if (addr >= 0x4004 && addr <= 0x4007) {
+        pulse2.writeRegister(addr, data);
+    } else if (addr >= 0x4008 && addr <= 0x400B) {
+        triangle.writeRegister(addr, data);
+    } else if (addr >= 0x400C && addr <= 0x400F) {
+        noise.writeRegister(addr, data, isNTSC);
+    } else if (addr >= 0x4010 && addr <= 0x4013) {
+        dmc.writeRegister(addr, data, isNTSC);
+    } else if (addr == 0x4015) {
+        pulse1.enable = (data & 0x01) != 0;
+        if (!pulse1.enable) pulse1.lengthCounter = 0;
+
+        pulse2.enable = (data & 0x02) != 0;
+        if (!pulse2.enable) pulse2.lengthCounter = 0;
+
+        triangle.enable = (data & 0x04) != 0;
+        if (!triangle.enable) triangle.lengthCounter = 0;
+
+        noise.enable = (data & 0x08) != 0;
+        if (!noise.enable) noise.lengthCounter = 0;
+
+        dmc.setEnabled((data & 0x10) != 0);
+        dmc.DMCIrqPending = false;
+    } else if (addr == 0x4017) {
+        delayedFrameMode = (data & 0x80) >> 7;
+        IRQInhibit = (data & 0x40) >> 6;
+        IRQPending = false;
+        frameCounterResetDelay = (clockCounter & 1) ? 4 : 3;
+    }
+}
+
+uint8_t NesAPU::read(uint16_t addr) {
+    uint8_t data = 0;
+    if (addr == 0x4015) {
+        data = (cpu->dataBus & 0x20);
+        if (pulse1.lengthCounter > 0) data |= 0x01;
+        if (pulse2.lengthCounter > 0) data |= 0x02;
+        if (triangle.lengthCounter > 0) data |= 0x04;
+        if (noise.lengthCounter > 0) data |= 0x08;
+        if (dmc.currentLength > 0) data |= 0x10;
+        if (IRQPending) data |= 0x40;
+        if (dmc.DMCIrqPending) data |= 0x80;
+        
+        IRQPending = false;
+    }
+    return data;
+}
+
+void NesAPU::clockQuarterFrame() {
+    pulse1.clockQuarterFrame();
+    pulse2.clockQuarterFrame();
+    triangle.clockQuarterFrame();
+    noise.clockQuarterFrame();
+}
+
+void NesAPU::clockHalfFrame() {
+    pulse1.clockHalfFrame();
+    pulse2.clockHalfFrame();
+    triangle.clockHalfFrame();
+    noise.clockHalfFrame();
 }
 
 void NesAPU::step() {
@@ -322,60 +457,35 @@ void NesAPU::step() {
             frameCounter = 0;
             frameMode = delayedFrameMode;
             if (frameMode == 1) { 
-                clockPulse();
-                clockEnvelopes();
+                clockQuarterFrame();
+                clockHalfFrame();
             }
         }
     }
 
-    if (triangle.timer > 0) {
-        triangle.timer--;
-    } else {
-        triangle.timer = triangle.timerReload;
-        if (triangle.linearCounter > 0 && triangle.lengthCounter > 0 && triangle.timerReload >= 2) {
-            triangle.dutySeq = (triangle.dutySeq + 1) % 32;
-        }
-    }
+    triangle.clockTimer();
 
     if (clockCounter % 2 == 0) {
-        if (pulse1.timer > 0) {
-            pulse1.timer--;
-        } else {
-            pulse1.timer = pulse1.timerReload;
-            pulse1.dutySeq = (pulse1.dutySeq + 1) & 7;
-        }
-        if (pulse2.timer > 0) {
-            pulse2.timer--;
-        } else {
-            pulse2.timer = pulse2.timerReload;
-            pulse2.dutySeq = (pulse2.dutySeq + 1) & 7;
-        }
-        if (noise.timer > 0) noise.timer--; else {
-            noise.timer = noise.timerReload;
-            uint16_t tap = noise.mode ? 6 : 1;
-            uint16_t feedback = (noise.shiftRegister & 1) ^ ((noise.shiftRegister >> tap) & 1);
-
-            noise.shiftRegister >>= 1;
-            noise.shiftRegister |= (feedback << 14);
-        }
+        pulse1.clockTimer();
+        pulse2.clockTimer();
+        noise.clockTimer();
     }
-    clockDMC();
+    
+    dmc.clockTimer(cpu);
 
     frameCounter++;
     if (getRom()->Region == ConsoleRegion::NTSC) {
-        if (frameMode == 0) { 
-            if (frameCounter == 7457)  { clockEnvelopes(); }
-            if (frameCounter == 14913) { clockEnvelopes(); clockPulse(); }
-            if (frameCounter == 22371) { clockEnvelopes(); }
+        if (frameMode == 0) {
+            if (frameCounter == 7457)  { clockQuarterFrame(); }
+            if (frameCounter == 14913) { clockQuarterFrame(); clockHalfFrame(); }
+            if (frameCounter == 22371) { clockQuarterFrame(); }
 
-            if (frameCounter == 29828) {
-                if (!IRQInhibit) IRQPending = true;
-            }
+            if (frameCounter == 29828 && !IRQInhibit) IRQPending = true;
 
             if (frameCounter == 29829) {
                 if (!IRQInhibit) IRQPending = true;
-                clockEnvelopes();
-                clockPulse();
+                clockQuarterFrame();
+                clockHalfFrame();
             }
 
             if (frameCounter == 29830) {
@@ -383,72 +493,36 @@ void NesAPU::step() {
                 frameCounter = 0;
             }
         } else { 
-            if (frameCounter == 7457)  {
-                clockEnvelopes();
-            }
-
-            if (frameCounter == 14913) {
-                clockEnvelopes();
-                clockPulse();
-            }
-
-            if (frameCounter == 22371) {
-                clockEnvelopes();
-            }
-
-            if (frameCounter == 37281) {
-                clockEnvelopes();
-                clockPulse();
-            }
-
-            if (frameCounter == 37282) { 
-                frameCounter = 0;
-            }
+            if (frameCounter == 7457)  { clockQuarterFrame(); }
+            if (frameCounter == 14913) { clockQuarterFrame(); clockHalfFrame(); }
+            if (frameCounter == 22371) { clockQuarterFrame(); }
+            if (frameCounter == 37281) { clockQuarterFrame(); clockHalfFrame(); }
+            if (frameCounter == 37282) { frameCounter = 0; }
         }
     } else {
         if (frameMode == 0) {
-            if (frameCounter == 8313)  { clockEnvelopes(); }
-            if (frameCounter == 16627) { clockEnvelopes(); clockPulse(); }
-            if (frameCounter == 24939) { clockEnvelopes(); }
+            if (frameCounter == 8313)  { clockQuarterFrame(); }
+            if (frameCounter == 16627) { clockQuarterFrame(); clockHalfFrame(); }
+            if (frameCounter == 24939) { clockQuarterFrame(); }
 
-            if (frameCounter == 33252) {
-                if (!IRQInhibit) IRQPending = true;
-            }
+            if (frameCounter == 33252 && !IRQInhibit) IRQPending = true;
 
             if (frameCounter == 33253) {
                 if (!IRQInhibit) IRQPending = true;
-
-                clockEnvelopes();
-                clockPulse();
+                clockQuarterFrame();
+                clockHalfFrame();
             }
 
             if (frameCounter == 33254) {
                 if (!IRQInhibit) IRQPending = true;
-
                 frameCounter = 0;
             }
         } else {
-            if (frameCounter == 8313)  {
-                clockEnvelopes();
-            }
-
-            if (frameCounter == 16627) {
-                clockEnvelopes();
-                clockPulse();
-            }
-
-            if (frameCounter == 24939) {
-                clockEnvelopes();
-            }
-
-            if (frameCounter == 41565) {
-                clockEnvelopes();
-                clockPulse();
-            }
-
-            if (frameCounter == 41566) {
-                frameCounter = 0;
-            }
+            if (frameCounter == 8313)  { clockQuarterFrame(); }
+            if (frameCounter == 16627) { clockQuarterFrame(); clockHalfFrame(); }
+            if (frameCounter == 24939) { clockQuarterFrame(); }
+            if (frameCounter == 41565) { clockQuarterFrame(); clockHalfFrame(); }
+            if (frameCounter == 41566) { frameCounter = 0; }
         }
     }
 
@@ -457,37 +531,11 @@ void NesAPU::step() {
 }
 
 double NesAPU::getOutputSample() {
-    double p1 = 0.0;
-    double p2 = 0.0;
-    double t  = 0.0;
-    double n  = 0.0;
-    double d  = 0.0;
-
-    if (pulse1.enable && pulse1.lengthCounter > 0 && !pulseSweepMuted(pulse1, true)) {
-        p1 = DutyTable[pulse1.duty][pulse1.dutySeq] ? (pulse1.constantVolume ? pulse1.volume : pulse1.envVol) : 0;
-    }
-
-    if (pulse2.enable && pulse2.lengthCounter > 0 && !pulseSweepMuted(pulse2, false)) {
-        p2 = DutyTable[pulse2.duty][pulse2.dutySeq] ? (pulse2.constantVolume ? pulse2.volume : pulse2.envVol) : 0;
-    }
-
-    if (triangle.enable && triangle.lengthCounter > 0 && triangle.linearCounter > 0) {
-        t = TriTable[triangle.dutySeq];
-    }
-
-    if (noise.enable && noise.lengthCounter > 0 && (noise.shiftRegister & 0x0001) == 0) {
-        n = noise.constantVolume ? noise.volume : noise.envVol;
-    }
-
-    if (dmc.enable) {
-        d = dmc.outputLevel;
-    }
-
-    p1 *= (pulse1Volume   / 50.0) * (masterVolume / 50.0);
-    p2 *= (pulse2Volume   / 50.0) * (masterVolume / 50.0);
-    t  *= (triangleVolume / 50.0) * (masterVolume / 50.0);
-    n  *= (noiseVolume    / 50.0) * (masterVolume / 50.0);
-    d  *= (dmcVolume      / 50.0) * (masterVolume / 50.0);
+    double p1 = pulse1.getSample() * (pulse1Volume / 50.0);
+    double p2 = pulse2.getSample() * (pulse2Volume / 50.0);
+    double t = triangle.getSample() * (triangleVolume / 50.0);
+    double n = noise.getSample() * (noiseVolume / 50.0);
+    double d = dmc.getSample() * (dmcVolume / 50.0);
 
     double pulseOut = 0.0;
     double pulseSum = p1 + p2;
@@ -501,5 +549,5 @@ double NesAPU::getOutputSample() {
         tndOut = 163.67 / ((24329.0 / tndIndex) + 100.0);
     }
 
-    return pulseOut + tndOut;
+    return (pulseOut + tndOut) * (masterVolume / 50.0);
 }
