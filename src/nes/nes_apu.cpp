@@ -549,5 +549,11 @@ double NesAPU::getOutputSample() {
         tndOut = 163.67 / ((24329.0 / tndIndex) + 100.0);
     }
 
-    return (pulseOut + tndOut) * (masterVolume / 50.0);
+    double expOut = 0.0;
+    NesROM* rom = getNESRom();
+    if (rom->mapper->hasExpansionAudio()) {
+        expOut = rom->mapper->getExpansionAudioSample() * (expVolume / 50.0);
+    }
+
+    return (pulseOut + tndOut + expOut) * (masterVolume / 50.0);
 }

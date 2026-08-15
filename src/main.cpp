@@ -1,4 +1,5 @@
 #include "gb/gb_apu.hpp"
+#include "nes/mappers/mapper_base.hpp"
 #include "nes/nes_cpu.hpp"
 #include "nes/nes_apu.hpp"
 #include "nes/nes_rom.hpp"
@@ -320,9 +321,15 @@ void ShowAudioConfigDialog(QWidget* parent) {
     volumeLayout->setContentsMargins(10, 10, 10, 10);
 
     std::vector<const char*> volumeNames;
-    float *volumePtrs[6];
+    float *volumePtrs[7];
     if (isNES) {
-        volumeNames = {"Square 1", "Square 2", "Triangle", "Noise", "DMC", "Master"};
+        volumeNames = {"Square 1", "Square 2", "Triangle", "Noise", "DMC"};
+        MapperBase *mapper = getNESRom()->mapper;
+        if (mapper->hasExpansionAudio()) {
+            volumeNames.push_back(mapper->getName());
+            volumePtrs[6] = &nesApu.expVolume;
+        }
+        volumeNames.push_back("Master");
         volumePtrs[0] = &nesApu.pulse1Volume;
         volumePtrs[1] = &nesApu.pulse2Volume;
         volumePtrs[2] = &nesApu.triangleVolume;

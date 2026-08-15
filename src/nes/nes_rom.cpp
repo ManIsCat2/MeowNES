@@ -19,7 +19,7 @@ MapperBase *NesROM::GetMapper(uint16_t id, uint16_t subId) {
         case 4: return new MMC3();
         case 5: return new MMC5();
         case 9: return new MMC2();
-        case 19: return new Namco163();
+        case 19: return new N163();
         case 34: 
             switch (subId) {
                 case 0: 
@@ -37,7 +37,7 @@ MapperBase *NesROM::GetMapper(uint16_t id, uint16_t subId) {
         case 90: return new JyCompany();
         case 116: return new SL12();
         case 209: return new JyCompany();
-        case 210: return new Namco163();
+        case 210: return new N163();
         case 211: return new JyCompany();
         case 225: case 255: return new MultiCart110In1();
         default: {

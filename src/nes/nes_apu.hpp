@@ -133,6 +133,7 @@ public:
     float triangleVolume = 50.0f;
     float noiseVolume = 50.0f;
     float dmcVolume = 50.0f;
+    float expVolume = 50.0f;
     float masterVolume = 50.0f;
     
     PulseChannel pulse1{true};

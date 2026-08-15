@@ -49,6 +49,8 @@ public:
     }
 
     virtual bool usingExtendedAttributes() { return false; };
+    virtual bool hasExpansionAudio() { return false; }
+    virtual double getExpansionAudioSample() { return 0.0; }
 
     virtual void clockCPU(void) {}
     virtual void clockPPU(void) {}
