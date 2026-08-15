@@ -70,7 +70,7 @@ void GbPPU::reset() {
     windowYLatch = false;
 }
 
-void GbPPU::Step(uint8_t cycles) {
+void GbPPU::step(uint8_t cycles) {
     if (!(LCDC & 0x80)) {
         LY = 0;
         windowLine = 0;

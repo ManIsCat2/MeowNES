@@ -161,8 +161,10 @@ void GbCPU::run(uint32_t maxCycles) {
         
         cyclesRun += cycles;
         updateTimers(cycles);
-        ppu->Step(cycles);
-        apu->step(cycles);
+
+        uint32_t cycOthers = doubleSpeed ? (cycles >> 1) : cycles;
+        ppu->step(cycOthers);
+        apu->step(cycOthers);
     }
 }
 
@@ -296,7 +298,12 @@ void GbCPU::execute(uint8_t opcode) {
         case 0x10: // STOP
             PRINT_DBG_CPU("STOP\n");
             fetch();
-            //halted = true; 
+            if (getGBRom()->isCGB && (KEY1 & 0x01)) {
+                doubleSpeed = !doubleSpeed;
+                KEY1 &= ~0x01; 
+            } else {
+                // halted = true; 
+            }
             cycles = 4;
             break;
 
@@ -2451,18 +2458,17 @@ void GbCPU::write(uint16_t addr, uint8_t value) {
         return;
     }
     if (addr == 0xFF02) {
-        if (value & 0x80) {
-            serialControl = (value & 0x7F);
-            IF |= 0x08;
-        } else {
-            serialControl = value;
-        }
-        if (value == 0x81) {
-            if (serialData == 0x0A) {
-                DebugPrintLog("GAMEBOY", "Serial output: %s", serialBuffer.c_str());
-                serialBuffer.clear();
-            } else {
-                serialBuffer += (char)(serialData);
+        serialControl = value;
+        if ((value & 0x81) == 0x81) {
+            IF |= 0x08;             
+            serialControl &= ~0x80; 
+            if (value == 0x81) {
+                if (serialData == 0x0A) {
+                    DebugPrintLog("GAMEBOY", "Serial output: %s", serialBuffer.c_str());
+                    serialBuffer.clear();
+                } else {
+                    serialBuffer += (char)(serialData);
+                }
             }
         }
         return;

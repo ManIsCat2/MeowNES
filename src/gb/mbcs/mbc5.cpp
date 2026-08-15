@@ -3,7 +3,6 @@
 #include "../gb_cpu.hpp"
 
 MBC5::MBC5() {
-
 }
 
 const char* MBC5::getName(void) {
@@ -35,38 +34,34 @@ void MBC5::updateBanks() {
     }
 }
 
-uint8_t MBC5::cpuRead(uint16_t addr) {
-    // todo do stuff here that i havent done
-    // for mbc5
-    return MBCBase::cpuRead(addr);
-}
-
 void MBC5::cpuWrite(uint16_t addr, uint8_t value) {
-    if (addr >= 0x0000 && addr <= 0x1FFF) {
-        ramEnable = ((value & 0x0F) == 0x0A);
-        updateBanks();
-        return;
-    }
+    if (addr <= 0x5FFF) {
+        GbROM *rom = getGBRom();
+        switch (addr >> 12) {
+            case 0x0:
+            case 0x1:
+                ramEnable = (value == 0x0A);
+                break;
+            
+            case 0x2:
+                romBank = (value & 0xFF) | (romBank & 0x100);
+                break;
 
-    if (addr >= 0x2000 && addr <= 0x2FFF) {
-        romBank = (romBank & 0x0100) | value;
-        updateBanks();
-        return;
-    }
+            case 0x3:
+                romBank = (romBank & 0xFF) | ((value & 0x01) << 8);
+                break;
 
-    if (addr >= 0x3000 && addr <= 0x3FFF) {
-        romBank = (romBank & 0x00FF) | (((uint16_t)(value & 0x01)) << 8);
+            case 0x4:
+            case 0x5:
+                if (rom->cartType >= 0x1c) {
+                    ramBank = value & 0x07;
+                } else {
+                    ramBank = value & 0x0F;
+                }
+                break;
+        }
+        
         updateBanks();
-        return;
-    }
-
-    if (addr >= 0x4000 && addr <= 0x5FFF) {
-        ramBank = value & 0x0F;
-        updateBanks();
-        return;
-    }
-
-    if (addr >= 0x6000 && addr <= 0x7FFF) {
         return;
     }
 

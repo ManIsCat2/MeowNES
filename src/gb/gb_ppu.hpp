@@ -46,7 +46,7 @@ public:
     bool DisableSprites = false;
 
     void reset();
-    void Step(uint8_t cycles);
+    void step(uint8_t cycles);
     void RenderScanline();
     void blitPixels();
     

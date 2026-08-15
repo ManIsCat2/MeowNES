@@ -237,6 +237,73 @@ void ShowRomInfoDialog(QWidget* parent) {
     delete dialog;
 }
 
+void ShowEmulatorConfigDialog(QWidget* parent) {
+    if (!emuConsole) return;
+    const ConsoleType type = emuConsole->getConsoleType();
+    const bool isNES = (type == ConsoleType::NES);
+
+    QDialog *dialog = new QDialog(parent);
+    dialog->setWindowTitle("Emulator Config");
+    dialog->setFixedSize(300, isNES ? 190 : 80);
+
+    QVBoxLayout *mainLayout = new QVBoxLayout(dialog);
+
+    QGroupBox *ppuSettingsBox = new QGroupBox("PPU Settings", dialog);
+    QGridLayout *ppuSettingsLayout = new QGridLayout(ppuSettingsBox);
+    
+    QCheckBox *VRAMCorruptCheckBox = new QCheckBox("VRAM Corruption", ppuSettingsBox);
+    VRAMCorruptCheckBox->setChecked(isNES ? nesPpu.VRAMCorruption : gbPpu.VRAMCorruption);
+
+    QCheckBox *disableSpritesCheckBox = new QCheckBox("Disable Sprites", ppuSettingsBox);
+    disableSpritesCheckBox->setChecked(isNES ? nesPpu.DisableSprites : gbPpu.DisableSprites);
+
+    ppuSettingsLayout->addWidget(VRAMCorruptCheckBox, 0, 0, Qt::AlignLeft | Qt::AlignTop);
+    ppuSettingsLayout->addWidget(disableSpritesCheckBox, 0, 1, Qt::AlignLeft | Qt::AlignTop);
+
+    QObject::connect(VRAMCorruptCheckBox, &QCheckBox::toggled, [isNES](bool checked) {
+        if (isNES) {
+            nesPpu.VRAMCorruption = checked;
+        } else {
+            gbPpu.VRAMCorruption = checked;
+        }
+    });
+    QObject::connect(disableSpritesCheckBox, &QCheckBox::toggled, [isNES](bool checked) {
+        if (isNES) {
+            nesPpu.DisableSprites = checked;
+        } else {
+            gbPpu.DisableSprites = checked;
+        }
+    });
+
+    if (isNES) {
+        QGroupBox *ntmirrorBox = new QGroupBox("NT Mirroring", dialog);
+        QVBoxLayout *ntmirrorLayout = new QVBoxLayout(ntmirrorBox);
+        QComboBox *ntmirrorComboBox = new QComboBox(ntmirrorBox);
+
+        const std::array<const char*, 5> ntmirrorStrs = {"Horizontal", "Vertical", "Screen A", "Screen B", "Fourscreen"};
+
+        for (size_t i = 0; i < ntmirrorStrs.size(); ++i) {
+            ntmirrorComboBox->addItem(ntmirrorStrs[i], (int)(i));
+        }
+
+        ntmirrorComboBox->setCurrentIndex((int)(nesPpu.Mirroring));
+
+        QObject::connect(ntmirrorComboBox, &QComboBox::currentIndexChanged, [](int index) {
+            nesPpu.Mirroring = (MirrorMode)(index);
+            DebugPrintLog("SETTINGS", "Set NT Mirroring to %d", index);
+        });
+
+        ntmirrorLayout->addWidget(ntmirrorComboBox);
+        ppuSettingsLayout->addWidget(ntmirrorBox, 1, 0, 1, 2);
+    }
+
+    mainLayout->addWidget(ppuSettingsBox);
+    mainLayout->addStretch();
+    dialog->setLayout(mainLayout);
+    dialog->exec();
+    delete dialog;
+}
+
 void ShowAudioConfigDialog(QWidget* parent) {
     if (!emuConsole) return;
     const ConsoleType type = emuConsole->getConsoleType();
@@ -422,57 +489,6 @@ void ShowDisplayConfigDialog(QWidget* parent) {
         settingsLayout->addWidget(shadowBox, 3, 0);
     }
     
-    QGroupBox *ppuSettingsBox = new QGroupBox("PPU Settings", dialog);
-    ppuSettingsBox->setFixedSize(270, isNES ? 150 : 65);
-
-    QGridLayout *ppuSettingsLayout = new QGridLayout(ppuSettingsBox);
-    
-    QCheckBox *VRAMCorruptCheckBox = new QCheckBox("VRAM Corruption", ppuSettingsBox);
-    VRAMCorruptCheckBox->setChecked(isNES ? nesPpu.VRAMCorruption : gbPpu.VRAMCorruption);
-
-    QCheckBox *disableSpritesCheckBox = new QCheckBox("Disable Sprites", ppuSettingsBox);
-    disableSpritesCheckBox->setChecked(isNES ? nesPpu.DisableSprites : gbPpu.DisableSprites);
-
-    ppuSettingsLayout->addWidget(VRAMCorruptCheckBox, 0, 0, Qt::AlignLeft | Qt::AlignTop);
-    ppuSettingsLayout->addWidget(disableSpritesCheckBox, 0, 1, Qt::AlignLeft | Qt::AlignTop);
-
-    QObject::connect(VRAMCorruptCheckBox, &QCheckBox::toggled, [isNES](bool checked) {
-        if (isNES) {
-            nesPpu.VRAMCorruption = checked;
-        } else {
-            gbPpu.VRAMCorruption = checked;
-        }
-    });
-    QObject::connect(disableSpritesCheckBox, &QCheckBox::toggled, [isNES](bool checked) {
-        if (isNES) {
-            nesPpu.DisableSprites = checked;
-        } else {
-            gbPpu.DisableSprites = checked;
-        }
-    });
-
-    if (isNES) {
-        QGroupBox *ntmirrorBox = new QGroupBox("NT Mirroring", dialog);
-        QVBoxLayout *ntmirrorLayout = new QVBoxLayout(ntmirrorBox);
-        QComboBox *ntmirrorComboBox = new QComboBox(ntmirrorBox);
-
-        constexpr std::array<const char*, 5> ntmirrorStrs = {"Horizontal", "Vertical", "Screen A", "Screen B", "Fourscreen"};
-
-        for (size_t i = 0; i < ntmirrorStrs.size(); ++i) {
-            ntmirrorComboBox->addItem(ntmirrorStrs[i], (int)(i));
-        }
-
-        ntmirrorComboBox->setCurrentIndex((int)(nesPpu.Mirroring));
-
-        QObject::connect(ntmirrorComboBox, &QComboBox::currentIndexChanged, [](int index) {
-            nesPpu.Mirroring = (MirrorMode)(index);
-            DebugPrintLog("SETTINGS", "Set NT Mirroring to %d", index);
-        });
-
-        ntmirrorLayout->addWidget(ntmirrorComboBox);
-        ppuSettingsLayout->addWidget(ntmirrorBox, 1, 0);
-    }
-
     QGroupBox *paletteBox = new QGroupBox("Palette", dialog);
     QGridLayout *paletteLayout = new QGridLayout(paletteBox);
 
@@ -619,13 +635,11 @@ void ShowDisplayConfigDialog(QWidget* parent) {
     filterLayout->addStretch();
 
     settingsBox->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    ppuSettingsBox->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
     QVBoxLayout *leftLayout = new QVBoxLayout();
     leftLayout->setAlignment(Qt::AlignTop);
 
     leftLayout->addWidget(settingsBox);
-    leftLayout->addWidget(ppuSettingsBox);
     leftLayout->addStretch();
 
     mainLayout->addLayout(leftLayout, 0, 0);
@@ -661,6 +675,7 @@ int main(int argc, char *argv[]) {
     QAction *gameResetAction = new QAction("Reset", &window);
     QAction *gamePauseAction = new QAction("Pause", &window);
 
+    QAction *emuConfAction = new QAction("Emulator Config", &window);
     QAction *keyEditAction = new QAction("Input Config", &window);
     QAction *audioConfAction = new QAction("Audio Config", &window);
     QAction *displayConfAction = new QAction("Display Config", &window);
@@ -678,6 +693,7 @@ int main(int argc, char *argv[]) {
     settingsMenu->addAction(keyEditAction);
     settingsMenu->addAction(audioConfAction);
     settingsMenu->addAction(displayConfAction);
+    settingsMenu->addAction(emuConfAction);
 
     miscMenu->addAction(romInfoAction);
     miscMenu->addAction(exitAction);
@@ -724,6 +740,7 @@ int main(int argc, char *argv[]) {
     QObject::connect(audioConfAction, &QAction::triggered, [&]() { ShowAudioConfigDialog(&window); });
     QObject::connect(displayConfAction, &QAction::triggered, [&]() { ShowDisplayConfigDialog(&window); });
     QObject::connect(romInfoAction, &QAction::triggered, [&]() { ShowRomInfoDialog(&window); });
+    QObject::connect(emuConfAction, &QAction::triggered, [&]() { ShowEmulatorConfigDialog(&window); });
 
     window.setCentralWidget(screen);
     InputManager inputMgr;

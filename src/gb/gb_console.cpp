@@ -24,7 +24,13 @@ bool GBConsole::loadGame(const std::string &file) {
 }
 
 void GBConsole::runFrame(void) {
-    gbCpu.run(CYCLES_PER_FRAME);
+    uint32_t targetCycles = CYCLES_PER_FRAME;
+    
+    if (gbCpu.doubleSpeed) {
+        targetCycles *= 2;
+    }
+    
+    gbCpu.run(targetCycles);
 }
 
 int GBConsole::getDisplayWidth(void) {
