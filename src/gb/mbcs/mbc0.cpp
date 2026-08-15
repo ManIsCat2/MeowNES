@@ -9,6 +9,6 @@ void MBC0::reset() {
     mapCPUMemory(0x0000, 0x7FFF, getGBRom()->ROM, 0, false);
 }
 
-const char* MBC0::getName(void) {
+const char *MBC0::getName(void) {
     return "MBC0";
 }

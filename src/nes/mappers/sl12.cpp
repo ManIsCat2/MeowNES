@@ -169,7 +169,7 @@ void SL12::update(void) {
     updateMirroring();
 }
 
-const char* SL12::getName(void) {
+const char *SL12::getName(void) {
     return "SL12";
 }
 

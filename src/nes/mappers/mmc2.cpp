@@ -42,7 +42,7 @@ void MMC2::cpuWrite(uint16_t addr, uint8_t value) {
     }
 }
 
-const char* MMC2::getName(void) {
+const char *MMC2::getName(void) {
     return "MMC2";
 }
 

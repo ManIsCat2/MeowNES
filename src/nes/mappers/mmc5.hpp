@@ -13,7 +13,7 @@ public:
     uint8_t readVRAM(uint16_t addr) override;
     void writeVRAM(uint16_t addr, uint8_t value) override;
 
-    const char* getName(void) override;
+    const char *getName(void) override;
     void reset() override;
 
     uint16_t getCHRBankSize() override {

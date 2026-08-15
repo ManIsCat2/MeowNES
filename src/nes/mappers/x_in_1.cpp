@@ -32,6 +32,6 @@ void XIn1::cpuWrite(uint16_t addr, uint8_t value) {
     MapperBase::cpuWrite(addr, value);
 }
 
-const char* XIn1::getName(void) {
+const char *XIn1::getName(void) {
     return "X in 1";
 }

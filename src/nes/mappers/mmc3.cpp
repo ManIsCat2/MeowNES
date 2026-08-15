@@ -60,7 +60,7 @@ void MMC3::cpuWrite(uint16_t addr, uint8_t value) {
     }
 }
 
-const char* MMC3::getName(void) {
+const char *MMC3::getName(void) {
     return "MMC3";
 }
 

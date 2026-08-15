@@ -12,3 +12,4 @@
 #include "sunsoft_fme7.hpp"
 #include "sl12.hpp"
 #include "jycompany.hpp"
+#include "110_in_1.hpp"

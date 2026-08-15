@@ -22,6 +22,6 @@ void CNROM::cpuWrite(uint16_t addr, uint8_t value) {
     MapperBase::cpuWrite(addr, value);
 }
 
-const char* CNROM::getName(void) {
+const char *CNROM::getName(void) {
     return "CNROM";
 }

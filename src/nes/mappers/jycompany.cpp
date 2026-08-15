@@ -119,7 +119,7 @@ void JyCompany::cpuWrite(uint16_t addr, uint8_t value) {
     updateState();
 }
 
-const char* JyCompany::getName() {
+const char *JyCompany::getName() {
     return "J.Y. Company";
 }
 

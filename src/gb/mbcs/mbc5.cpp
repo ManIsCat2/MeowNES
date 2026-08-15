@@ -5,7 +5,7 @@
 MBC5::MBC5() {
 }
 
-const char* MBC5::getName(void) {
+const char *MBC5::getName(void) {
     return "MBC5";
 }
 

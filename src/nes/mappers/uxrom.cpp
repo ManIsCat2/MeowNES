@@ -23,6 +23,6 @@ void UxROM::cpuWrite(uint16_t addr, uint8_t value) {
     MapperBase::cpuWrite(addr, value);
 }
 
-const char* UxROM::getName(void) {
+const char *UxROM::getName(void) {
     return "UxROM";
 }

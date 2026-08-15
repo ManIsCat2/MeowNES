@@ -6,7 +6,7 @@ class MBC3 : public MBCBase {
 public:
     MBC3();
 
-    const char* getName(void) override;
+    const char *getName(void) override;
     void reset() override;
     
     uint8_t cpuRead(uint16_t addr) override;

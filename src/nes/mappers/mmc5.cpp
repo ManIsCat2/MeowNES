@@ -43,7 +43,7 @@ void MMC5::reset() {
     updatePRG();
 }
 
-const char* MMC5::getName() {
+const char *MMC5::getName() {
     return "MMC5";
 }
 

@@ -11,7 +11,7 @@ public:
 };
 
 struct Keybind {
-    const char* name;
+    const char *name;
     Qt::Key key;
 };
 

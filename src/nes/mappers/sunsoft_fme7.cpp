@@ -64,7 +64,7 @@ void SunSoftFME7::cpuWrite(uint16_t addr, uint8_t value) {
     }
 }
 
-const char* SunSoftFME7::getName(void) {
+const char *SunSoftFME7::getName(void) {
     return "SunSoft FME-7";
 }
 

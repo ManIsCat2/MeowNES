@@ -14,7 +14,7 @@ void Namco163::reset() {
     updateWorkRam();
 }
 
-const char* Namco163::getName(void) {
+const char *Namco163::getName(void) {
     if (variant == Variant::NAMCO_175) return "Namco175";
     if (variant == Variant::NAMCO_340) return "Namco340";
     return "Namco163";

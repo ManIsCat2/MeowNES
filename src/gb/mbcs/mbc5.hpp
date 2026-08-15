@@ -5,7 +5,7 @@ class MBC5 : public MBCBase {
 public:
     MBC5();
 
-    const char* getName(void) override;
+    const char *getName(void) override;
     void reset() override;
     
     void cpuWrite(uint16_t addr, uint8_t value) override;

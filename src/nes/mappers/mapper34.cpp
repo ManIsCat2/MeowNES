@@ -36,6 +36,6 @@ void Mapper34::cpuWrite(uint16_t addr, uint8_t value) {
     MapperBase::cpuWrite(addr, value);
 }
 
-const char* Mapper34::getName(void) {
+const char *Mapper34::getName(void) {
     return nina01 ? "Nina001" : "BNROM";
 }

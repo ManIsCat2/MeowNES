@@ -9,7 +9,7 @@ public:
 
     uint8_t cpuRead(uint16_t addr) override;
     void cpuWrite(uint16_t addr, uint8_t value) override;
-    const char* getName(void) override;
+    const char *getName(void) override;
     void reset() override;
 
     void saveState(SaveStateFile &s) override {

@@ -9,7 +9,7 @@ public:
 
     void cpuWrite(uint16_t addr, uint8_t value) override;
     void reset() override;
-    const char* getName(void) override;
+    const char *getName(void) override;
 
     uint16_t getCHRBankSize() override {
         return 0x400;

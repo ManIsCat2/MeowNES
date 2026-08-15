@@ -14,13 +14,14 @@ Supported mappers:
 - MMC3 (Mapper 4)
 - MMC5 (Mapper 5) (WIP)
 - MMC2 (Mapper 9)
-- Namco163 / Namco129 (Mapper 19)
+- Namco163 (Mapper 19)
 - Nina001 (Mapper 34, SubMapper 1)
 - BNROM (Mapper 34, SubMapper 2)
 - X in 1 (Mapper 62)
 - SunSoft FME-7 (Mapper 69)
 - SL12 (?) (Mapper 116)
 - J.Y. Company ASIC (Mapper 90, 209 and 211) (WIP)
+- 110 in 1 (Mapper 255 and 225)
 
 ## Game Boy
 The whole GB support right now is kinda bad, so everything is WIP.

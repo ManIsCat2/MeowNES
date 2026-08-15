@@ -39,6 +39,7 @@ MapperBase *NesROM::GetMapper(uint16_t id, uint16_t subId) {
         case 209: return new JyCompany();
         case 210: return new Namco163();
         case 211: return new JyCompany();
+        case 225: case 255: return new MultiCart110In1();
         default: {
             QMessageBox::critical((QMainWindow*)globalQTWin, "Error", ("Mapper " + std::to_string(id) + " is unimplemented, failed to open ROM").c_str());
             return nullptr;
