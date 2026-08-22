@@ -20,7 +20,7 @@ public:
         bool write = false;
     };
     struct MemPage PRGPages[256];
-    struct MemPage CHRPages[32];
+    struct MemPage CHRPages[256];
 
     uint16_t subMapper = 0;
 
@@ -47,8 +47,10 @@ public:
     virtual uint32_t getSRAMSize() { 
         return 0x2000;
     }
+    virtual uint16_t getCHRRamSize() { 
+        return 0x2000;
+    }
 
-    virtual bool usingExtendedAttributes() { return false; };
     virtual bool hasExpansionAudio() { return false; }
     virtual double getExpansionAudioSample() { return 0.0; }
 

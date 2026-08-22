@@ -22,7 +22,6 @@ class NesPPU : public HasVideoFilter {
 public:
     NesPPU();
     ~NesPPU();
-    std::vector<uint8_t> ChrData{};
     std::array<uint8_t, NES_VRAM_SIZE> VRAM{};
     std::array<uint8_t, NES_PALRAM_SIZE> paletteRAM{};
     uint8_t OAM[0x100];
@@ -92,7 +91,6 @@ public:
     void RenderScreen(void);
     void Step();
 
-    void LoadCHRROM(const uint8_t* chrData, int chrSize);
     uint16_t mirrorNametable(uint16_t addr);
     void blitPixels();
 

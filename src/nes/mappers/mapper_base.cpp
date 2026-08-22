@@ -10,10 +10,10 @@ void MapperBase::setCHRBank(uint16_t page, uint16_t val, enum BankSize size) {
     switch (size) {
         case BANK_1K: {
             uint32_t chrSlotSize = getCHRBankSize();
-            uint32_t bankOffset = (val * chrSlotSize) & (getNESRom()->CHRRomSize - 1);
+            uint32_t bankOffset = val * chrSlotSize;
             uint16_t ppuStart = page * chrSlotSize;
             uint16_t ppuEnd = ppuStart + chrSlotSize - 1;
-            mapPPUMemory(ppuStart, ppuEnd, ppu->ChrData.data(), bankOffset, getNESRom()->CHRRomSize == 0);
+            mapPPUMemory(ppuStart, ppuEnd, getNESRom()->CHR, bankOffset, getNESRom()->CHRRomSize == 0);
             break;
         }
         case BANK_2K:
@@ -42,7 +42,7 @@ void MapperBase::setPRGBank(uint16_t page, uint16_t val, enum BankSize size) {
     switch (size) {
         case BANK_1K: {
             uint32_t prgSlotSize = getPRGBankSize();
-            uint32_t bankOffset = (val * prgSlotSize) & (getNESRom()->PRGRomSize - 1);
+            uint32_t bankOffset = val * prgSlotSize;
             uint16_t cpuStart = 0x8000 + (page * prgSlotSize);
             uint16_t cpuEnd = cpuStart + prgSlotSize - 1;
             mapCPUMemory(cpuStart, cpuEnd, getNESRom()->ROM, bankOffset, false);
@@ -73,7 +73,6 @@ void MapperBase::setPRGBank(uint16_t page, uint16_t val, enum BankSize size) {
 
 uint8_t MapperBase::cpuRead(uint16_t addr) {
     if (!PRGPages[addr >> 8].ptr) {
-        //DebugPrintLog("MAPPER", "tried reading from unmapped CPU memory at address 0x%x", addr);
         return cpu->dataBus;
     }
     return cpu->dataBus = (PRGPages[addr >> 8].ptr[addr & 0xFF]);
@@ -85,16 +84,13 @@ void MapperBase::cpuWrite(uint16_t addr, uint8_t value) {
 }
 
 uint8_t MapperBase::readCHR(uint16_t addr, bool sprite) {
-    addr &= 0x1FFF;
     if (!CHRPages[addr >> 8].ptr) {
-        //DebugPrintLog("MAPPER", "tried reading from unmapped PPU memory at address 0x%x", addr);
         return ppu->dataBus;
     }
 
     return CHRPages[addr >> 8].ptr[addr & 0xFF];
 }
 void MapperBase::writeCHR(uint16_t addr, uint8_t value) {
-    addr &= 0x1FFF;
     if (CHRPages[addr >> 8].write) {
         CHRPages[addr >> 8].ptr[addr & 0xFF] = value;
     }
@@ -111,7 +107,7 @@ void MapperBase::mapCPUMemory(uint16_t start, uint16_t end, uint8_t *memory, uin
     uint8_t page = start >> 8;
     
     for (uint32_t addr = start; addr <= end; addr += 0x100) {
-        PRGPages[page].ptr = memory + ((offset + (addr - start)) & (getNESRom()->PRGRomSize-1));
+        PRGPages[page].ptr = memory + ((offset + (addr - start)));
         PRGPages[page].write = writable;
         page++;
     }
@@ -130,7 +126,7 @@ void MapperBase::mapPPUMemory(uint16_t start, uint16_t end, uint8_t *memory, uin
     uint8_t page = start >> 8;
 
     for (uint32_t addr = start; addr <= end; addr += 0x100) {
-        CHRPages[page & 0x1F].ptr = memory + ((offset + (addr - start)) & (getNESRom()->CHRRomSize - 1));
+        CHRPages[page & 0x1F].ptr = memory + (offset + (addr - start));
         CHRPages[page & 0x1F].write = writable;
         page++;
     }

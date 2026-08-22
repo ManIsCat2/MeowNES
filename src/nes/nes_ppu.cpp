@@ -128,16 +128,10 @@ void NesPPU::decayDataBus(void) {
 }
 
 uint16_t NesPPU::getAttributeByte() {
-    if (romMapper->usingExtendedAttributes()) {
-        MMC5 *mmc5 = (MMC5*)romMapper;
-        uint8_t ex = mmc5->getEXRAMByte(VRAMAddr);
-        return (ex >> 6) & 0x03;
-        
-    }
     uint16_t attrAddr = (VRAMAddr & 0x0C00) | 0x03C0 | ((VRAMAddr >> 4) & 0x38) | ((VRAMAddr >> 2) & 0x07);
     uint8_t attr = romMapper->readVRAM(attrAddr);
     uint8_t shift = ((VRAMAddr >> 4) & 4) | (VRAMAddr & 2);
-    
+
     return (attr >> shift) & 0x03;
 }
 
@@ -389,11 +383,6 @@ void NesPPU::Step() {
         if (ScanLine >= totalScanlines) ScanLine = 0;
     }
     if (dataBus != 0) decayDataBus();
-}
-
-void NesPPU::LoadCHRROM(const uint8_t *data, int chrSize) {
-    ChrData.resize(chrSize);
-    memcpy(ChrData.data(), data, chrSize);
 }
 
 uint16_t NesPPU::mirrorNametable(uint16_t addr) {

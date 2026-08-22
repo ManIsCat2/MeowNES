@@ -1,5 +1,6 @@
 #include "nes_rom.hpp"
 #include "../main.hpp"
+#include "mappers/cprom.hpp"
 #include "nes_ppu.hpp"
 
 NesROM::NesROM() {
@@ -8,6 +9,7 @@ NesROM::~NesROM() {
     delete mapper;
     nesCpu.romMapper = nesPpu.romMapper = mapper = nullptr;
     delete[] ROM;
+    delete[] CHR;
 }
 
 MapperBase *NesROM::GetMapper(uint16_t id, uint16_t subId) {
@@ -19,6 +21,7 @@ MapperBase *NesROM::GetMapper(uint16_t id, uint16_t subId) {
         case 4: return new MMC3();
         case 5: return new MMC5();
         case 9: return new MMC2();
+        case 13: return new CPROM();
         case 19: return new N163();
         case 34: 
             switch (subId) {
@@ -175,16 +178,17 @@ bool NesROM::load(const std::string &filename) {
     if (ROM) { delete[] ROM; ROM = nullptr; }
     ROM = new uint8_t[PRGRomSize];
 
+    if (CHR) { delete[] CHR; CHR = nullptr; }
+
     size_t offset = 16;
 
     std::memcpy(ROM, &data[offset], PRGRomSize);
     offset += PRGRomSize;
         
     if (chrPages == 0) {
-        uint8_t chrRam[0x2000] = {};
-        nesPpu.LoadCHRROM(chrRam, 0x2000);
+        CHR = new uint8_t[mapper->getCHRRamSize()];
     } else {
-        nesPpu.LoadCHRROM(&data[offset], CHRRomSize);
+        CHR = new uint8_t[CHRRomSize];
     }
     offset += CHRRomSize;
     DebugPrintLog("ROM", "Loaded NES ROM '%s'", Name.c_str());
