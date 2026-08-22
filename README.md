@@ -14,6 +14,7 @@ Supported mappers:
 - MMC3 (Mapper 4)
 - MMC5 (Mapper 5) (WIP)
 - MMC2 (Mapper 9)
+- CPROM (Mapper 13)
 - Namco163 (Mapper 19)
 - Nina001 (Mapper 34, SubMapper 1)
 - BNROM (Mapper 34, SubMapper 2)
