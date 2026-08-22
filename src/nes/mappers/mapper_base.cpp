@@ -107,7 +107,7 @@ void MapperBase::mapCPUMemory(uint16_t start, uint16_t end, uint8_t *memory, uin
     uint8_t page = start >> 8;
     
     for (uint32_t addr = start; addr <= end; addr += 0x100) {
-        PRGPages[page].ptr = memory + ((offset + (addr - start)));
+        PRGPages[page].ptr = memory + ((offset + (addr - start)) & (getNESRom()->PRGRomSize-1));
         PRGPages[page].write = writable;
         page++;
     }

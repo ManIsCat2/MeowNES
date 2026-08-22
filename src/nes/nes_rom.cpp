@@ -104,7 +104,7 @@ bool NesROM::load(const std::string &filename) {
     }
 
     uint8_t romHeader[16];
-    std::memcpy(romHeader, data.data(), 16);
+    memcpy(romHeader, data.data(), 16);
 
     MirrorMode romMirroring = (romHeader[6] & 1) ? MirrorMode::VERTICAL :  MirrorMode::HORIZONTAL;
 
@@ -159,7 +159,7 @@ bool NesROM::load(const std::string &filename) {
     } else {
         if (mapper) { delete mapper; nesCpu.romMapper = nesPpu.romMapper = mapper = nullptr; }
         Name = romName;
-        std::memcpy(Header, romHeader, 16);
+        memcpy(Header, romHeader, 16);
         hasBattery = romHasBattery;
         Mirroring = nesPpu.Mirroring = romMirroring;
         Version = romVersion;
@@ -182,13 +182,14 @@ bool NesROM::load(const std::string &filename) {
 
     size_t offset = 16;
 
-    std::memcpy(ROM, &data[offset], PRGRomSize);
+    memcpy(ROM, &data[offset], PRGRomSize);
     offset += PRGRomSize;
         
     if (chrPages == 0) {
         CHR = new uint8_t[mapper->getCHRRamSize()];
     } else {
         CHR = new uint8_t[CHRRomSize];
+        memcpy(CHR, &data[offset], CHRRomSize);
     }
     offset += CHRRomSize;
     DebugPrintLog("ROM", "Loaded NES ROM '%s'", Name.c_str());
