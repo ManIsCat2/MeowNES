@@ -2149,7 +2149,6 @@ void GbCPU::execute(uint8_t opcode) {
             romIsLoaded = false;
             reset();
             DebugPrintLog("CPU", "%s", errorMsg);
-            QMessageBox::critical((QMainWindow*)globalQTWin, "Fatal error", errorMsg);
             break;
         }
     }

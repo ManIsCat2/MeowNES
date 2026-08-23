@@ -3,6 +3,7 @@
 enum class HeaderVersion {
     NES2_0,
     INES,
+    UNIF
 };
 
 #include <cstdint>
@@ -39,4 +40,7 @@ public:
     MapperBase *GetMapper(uint16_t id, uint16_t subId);
     ConsoleRegion GetRegion(void);
     bool load(const std::string &file) override;
+private:
+    bool loadINES(const std::vector<uint8_t> &data, const std::string &romName);
+    bool loadUNIF(const std::vector<uint8_t> &data, const std::string &romName);
 };

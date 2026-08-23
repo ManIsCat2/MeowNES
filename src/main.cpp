@@ -93,10 +93,11 @@ QAction *makeQBool(const QString &text, QObject *parent, bool defaultBool) {
 
 QTimer cpuTimer;
 
-const std::array<std::string_view, 3> allowedExts = {
+const std::array<std::string_view, 4> allowedExts = {
     ".nes",
     ".gb",
-    ".gbc"
+    ".gbc",
+    ".unif"
 };
 
 bool loadConsoleWithGame(const std::string &file) {
@@ -135,7 +136,7 @@ bool loadConsoleWithGame(const std::string &file) {
     delete emuConsole;
     emuConsole = nullptr;
 
-    if (matchedExt == ".nes") {
+    if (matchedExt == ".nes" || matchedExt == ".unif") {
         emuConsole = new NESConsole;
     } else if (matchedExt == ".gb" || matchedExt == ".gbc") {
         emuConsole = new GBConsole;
@@ -180,36 +181,63 @@ void ShowRomInfoDialog(QWidget* parent) {
         const ConsoleType type = emuConsole->getConsoleType();
         const bool isNES = (type == ConsoleType::NES);
         const bool isGB  = (type == ConsoleType::GAMEBOY);
-
         std::string fileStr = "File: " + getRom()->Name;
-        if (isNES) {
-            NesROM *rom = getNESRom();
-            std::string HeaderHexStr;
-            HeaderHexStr.reserve(32);
-            for (int i = 0; i < 8; i++) {
-                char Buf[4];
-                snprintf(Buf, sizeof(Buf), "%02X", rom->Header[i]);
-                HeaderHexStr += Buf;
-                if (i < 7) HeaderHexStr += " ";
-            }
-            HeaderHexStr = "Header: " + HeaderHexStr;
-            std::string headVerStr = "Header Version: " + std::string(rom->Version == HeaderVersion::NES2_0 ? "NES2.0" : "INES");
-            char PRGSizeStr[128];
-            snprintf(PRGSizeStr, sizeof(PRGSizeStr), "PRG Size: %uKiB (%u x 16KiB)", rom->PRGNumPages * 16, rom->PRGNumPages);
-            char CHRSizeStr[128];
-            snprintf(CHRSizeStr, sizeof(CHRSizeStr), "CHR Size: %uKiB (%u x 8KiB)", rom->CHRNumPages * 8, rom->CHRNumPages);
-            std::string mapperStr = "Mapper: " + std::string(rom->mapper ? rom->mapper->getName() : (rom->MapperID ? "Unknown" : "NROM")) + " (Mapper " + std::to_string(rom->MapperID)+")";
-            std::string subMapperStr = "Sub Mapper: " + std::to_string(rom->SubMapperID);
-            std::string mirrorStr = "Mirroring: " + std::string(rom->Mirroring == MirrorMode::HORIZONTAL ? "Horizontal" : "Vertical");
-            std::string batteryStr = "Battery: " + std::string(rom->hasBattery ? "Yes" : "No");
-            std::string CHRRamStr = "CHR-RAM: " + std::string(rom->CHRRomSize == 0 ? "Yes" : "No");
-            char batterySizeStr[128];
-            size_t SRAMSize = rom->hasBattery ? rom->mapper->getSRAMSize() : 0x0000; 
-            snprintf(batterySizeStr, sizeof(batterySizeStr), "SRAM/Battery Size: 0x%zx (%zu)", SRAMSize, SRAMSize);
-            char RESETVecStr[128];
-            snprintf(RESETVecStr, sizeof(RESETVecStr), "RESET Vector: 0x%x", rom->ResetVec);
 
-            fullInfo = joinLines({fileStr, HeaderHexStr, headVerStr, PRGSizeStr, CHRSizeStr, mapperStr, subMapperStr, mirrorStr, batteryStr, CHRRamStr, batterySizeStr, RESETVecStr});
+        if (isNES) {
+            NesROM* rom = getNESRom();
+
+            if (rom->Version == HeaderVersion::UNIF) {
+                char PRGSizeStr[128];
+                snprintf(PRGSizeStr, sizeof(PRGSizeStr), "PRG Size: %zu KiB", rom->PRGRomSize / 1024);
+
+                char CHRSizeStr[128];
+                snprintf(CHRSizeStr, sizeof(CHRSizeStr), "CHR Size: %zu KiB", rom->CHRRomSize / 1024);
+
+                std::string mapperStr = "Mapper: " + std::string(rom->mapper ? rom->mapper->getName() : "Unknown") + " (Mapper " + std::to_string(rom->MapperID) + ")";
+                std::string mirrorStr = "Mirroring: " + std::string(rom->Mirroring == MirrorMode::HORIZONTAL ? "Horizontal" : "Vertical");
+
+                std::string batteryStr = "Battery: " + std::string(rom->hasBattery ? "Yes" : "No");
+                std::string CHRRamStr = "CHR-RAM: " + std::string(rom->CHRRomSize == 0 ? "Yes" : "No");
+                char batterySizeStr[128];
+                size_t SRAMSize = rom->hasBattery && rom->mapper ? rom->mapper->getSRAMSize() : 0;
+                snprintf(batterySizeStr, sizeof(batterySizeStr), "SRAM/Battery Size: 0x%zx (%zu)", SRAMSize, SRAMSize);
+                char RESETVecStr[128];
+                snprintf(RESETVecStr, sizeof(RESETVecStr), "RESET Vector: 0x%x", rom->ResetVec);
+                fullInfo = joinLines({fileStr, "Header Version: UNIF", PRGSizeStr, CHRSizeStr, mapperStr, mirrorStr, batteryStr, CHRRamStr, batterySizeStr, RESETVecStr});
+            } else {
+                std::string HeaderHexStr;
+                HeaderHexStr.reserve(32);
+
+                for (int i = 0; i < 8; i++) {
+                    char Buf[4];
+                    snprintf(Buf, sizeof(Buf), "%02X", rom->Header[i]);
+
+                    HeaderHexStr += Buf;
+                    if (i < 7) HeaderHexStr += " ";
+                }
+
+                HeaderHexStr = "Header: " + HeaderHexStr;
+                std::string headVerStr = "Header Version: " + std::string(rom->Version == HeaderVersion::NES2_0 ? "NES2.0" : "INES");
+
+                char PRGSizeStr[128];
+                snprintf(PRGSizeStr, sizeof(PRGSizeStr), "PRG Size: %uKiB (%u x 16KiB)", rom->PRGNumPages * 16, rom->PRGNumPages);
+
+                char CHRSizeStr[128];
+                snprintf(CHRSizeStr, sizeof(CHRSizeStr), "CHR Size: %uKiB (%u x 8KiB)", rom->CHRNumPages * 8, rom->CHRNumPages);
+
+                std::string mapperStr = "Mapper: " + std::string(rom->mapper ? rom->mapper->getName() : (rom->MapperID ? "Unknown" : "NROM")) + " (Mapper " + std::to_string(rom->MapperID) + ")";
+                std::string subMapperStr = "Sub Mapper: " + std::to_string(rom->SubMapperID);
+                std::string mirrorStr = "Mirroring: " + std::string(rom->Mirroring == MirrorMode::HORIZONTAL ? "Horizontal" : "Vertical");
+                std::string batteryStr = "Battery: " + std::string(rom->hasBattery ? "Yes" : "No");
+                std::string CHRRamStr = "CHR-RAM: " + std::string(rom->CHRRomSize == 0 ? "Yes" : "No");
+
+                char batterySizeStr[128];
+                size_t SRAMSize = rom->hasBattery && rom->mapper ? rom->mapper->getSRAMSize() : 0;
+                snprintf(batterySizeStr, sizeof(batterySizeStr), "SRAM/Battery Size: 0x%zx (%zu)", SRAMSize, SRAMSize);
+                char RESETVecStr[128];
+                snprintf(RESETVecStr, sizeof(RESETVecStr), "RESET Vector: 0x%x", rom->ResetVec);
+                fullInfo = joinLines({fileStr, HeaderHexStr, headVerStr, PRGSizeStr, CHRSizeStr, mapperStr, subMapperStr, mirrorStr, batteryStr, CHRRamStr, batterySizeStr, RESETVecStr});
+            }
         } else if (isGB) {
             GbROM *rom = getGBRom();
 
@@ -227,6 +255,7 @@ void ShowRomInfoDialog(QWidget* parent) {
             fullInfo = joinLines({fileStr, titleStr, mapperStr, batteryStr, RTCStr, RAMStr, ROMSizeStr, RAMSizeStr});
         }
     }
+
     QLabel* label = new QLabel(QString::fromStdString(fullInfo), dialog);
     label->setAlignment(Qt::AlignCenter);
 
@@ -716,7 +745,7 @@ int main(int argc, char *argv[]) {
             &window,
             "Open ROM",
             "",
-            "Supported ROMs (*.nes *.gb *.gbc)"
+            "Supported ROMs (*.nes *.unif *.gb *.gbc)"
         );
 
         if (!file.isEmpty()) {

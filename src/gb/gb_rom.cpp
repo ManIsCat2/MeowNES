@@ -148,7 +148,6 @@ bool GbROM::load(const std::string &filename) {
 
     if (!mbc) {
         DebugPrintLog("ROM", "Unimplemented mapper: %u, failed to open ROM", cartType);
-        QMessageBox::critical((QMainWindow*)globalQTWin, "Error", ("Mapper " + std::to_string(cartType) + " is unimplemented, failed to open ROM").c_str());
         return false;
     }
     mbc->initialize();

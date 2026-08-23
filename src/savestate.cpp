@@ -48,10 +48,9 @@ void SaveStateFile::Write(const char *FileName) {
 void SaveStateFile::Load(const char *FileName) {
     OpenFileR(FileName);
 
-    uint32_t detectedSig = ReadBytes<uint32_t>();
-    if (detectedSig != NYA_SIGNATURE) {
+    uint32_t sig = ReadBytes<uint32_t>();
+    if (sig != NYA_SIGNATURE) {
         DebugPrintLog("SAVESTATE", "File has invalid savestate header");
-        QMessageBox::critical((QMainWindow*)globalQTWin, "Error", "File has invalid savestate header");
         CloseFile();
         return;
     }

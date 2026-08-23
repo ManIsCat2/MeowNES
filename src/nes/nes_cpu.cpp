@@ -322,7 +322,6 @@ void NesCPU::execute(uint8_t opcode) {
             romIsLoaded = false;
             reset();
             DebugPrintLog("CPU", "CPU crashed after reaching a JAM instruction");
-            QMessageBox::critical((QMainWindow*)globalQTWin, "Fatal error", "CPU crashed after reaching a JAM instruction");
             break;
         // lda
         case 0xA9: // LDA immediate
@@ -1923,7 +1922,6 @@ void NesCPU::execute(uint8_t opcode) {
             romIsLoaded = false;
             reset();
             DebugPrintLog("CPU", "%s", errorMsg);
-            QMessageBox::critical((QMainWindow*)globalQTWin, "Fatal error", errorMsg);
             break;
     }
    // DebugPrintLog("CPU", "Proccessed 0x%x", opcode);
