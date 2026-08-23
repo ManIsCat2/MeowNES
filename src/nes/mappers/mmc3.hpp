@@ -13,7 +13,7 @@ public:
     
     void saveState(SaveStateFile &s) override {
         s.WriteBytes<uint8_t>(BankSelect);
-        s.WriteBytesPtr<uint8_t>(BankRegisters, 8);
+        s.WriteLenBytes<uint8_t>(BankRegisters, 8);
 
         s.WriteBytes<uint8_t>(PrgMode);
         s.WriteBytes<uint8_t>(ChrMode);
@@ -25,7 +25,7 @@ public:
     }
     void loadState(SaveStateFile &s) override {
         BankSelect = s.ReadBytes<uint8_t>();
-        s.ReadBytesPtr<uint8_t>(BankRegisters, 8);
+        s.ReadLenBytes<uint8_t>(BankRegisters, 8);
 
         PrgMode = s.ReadBytes<uint8_t>();
         ChrMode = s.ReadBytes<uint8_t>();

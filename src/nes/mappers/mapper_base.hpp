@@ -2,6 +2,7 @@
 
 #include "../../savestate.hpp"
 #include "../nes_bus.hpp"
+#include "nes.hpp"
 #include <stdint.h>
 #include <string>
 
@@ -25,6 +26,7 @@ public:
     uint16_t subMapper = 0;
 
     uint8_t PRGRam[0x2000]; //or called WRAM
+    uint8_t RAM[NES_RAM_SIZE];
     uint8_t *SRAM = nullptr;
 
     virtual ~MapperBase();

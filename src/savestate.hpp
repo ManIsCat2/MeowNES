@@ -30,7 +30,7 @@ public:
     }
 
     template <typename T>
-    T *ReadBytesPtr(T *Buf, uint32_t Len) {
+    T *ReadLenBytes(T *Buf, uint32_t Len) {
         size_t RealSize = sizeof(T) * Len;
         if ((uint32_t)(Offset + RealSize) > FileSize) return Buf;
         memcpy(Buf, Data + Offset, RealSize);
@@ -45,7 +45,7 @@ public:
     }
 
     template <typename T>
-    bool WriteBytesPtr(T *Buf, uint32_t Len) {
+    bool WriteLenBytes(T *Buf, uint32_t Len) {
         size_t Written = fwrite(Buf, sizeof(T), Len, File);
         return Written == Len;
     }

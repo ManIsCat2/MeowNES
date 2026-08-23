@@ -27,7 +27,6 @@ public:
     };
 
     bool paused = false;
-    uint8_t RAM[NES_RAM_SIZE];
     uint8_t dataBus = 0;
     bool NMIDetector = false;
     bool doNMI = false;

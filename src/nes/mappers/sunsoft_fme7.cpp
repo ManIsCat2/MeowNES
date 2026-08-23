@@ -69,8 +69,7 @@ const char *SunSoftFME7::getName(void) {
 }
 
 void SunSoftFME7::clockCPU(void) {
-    if(!irqCounterEnabled)
-        return;
+    if (!irqCounterEnabled) return;
 
     irqCounter--;
 

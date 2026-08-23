@@ -16,7 +16,7 @@ void NesCPU::reset() {
 
     //default ram values
     for (int i = 0; i < NES_RAM_SIZE; i++) {
-        RAM[i] = (!(i & 1)) ? 0x24 : 0x01; // L is real 2401
+        romMapper->RAM[i] = (!(i & 1)) ? 0x24 : 0x01; // L is real 2401
     }
     getNESRom()->ResetVec = PC;
     ppu->reset();
@@ -1936,7 +1936,7 @@ void NesCPU::SetZN(uint8_t value) {
 
 uint8_t NesCPU::read(uint16_t addr) {
     if (addr < NES_RAM_MIRRORED_SIZE) {
-        return dataBus = RAM[addr & 0x7ff];
+        return dataBus = romMapper->RAM[addr & 0x7ff];
     }
 
     if (addr >= 0x2000 && addr < 0x4000) {
@@ -2029,7 +2029,7 @@ uint8_t NesCPU::read(uint16_t addr) {
 void NesCPU::write(uint16_t addr, uint8_t value) {
     dataBus = value;
     if (addr < NES_RAM_MIRRORED_SIZE) {
-        RAM[addr & 0x7ff] = value;
+        romMapper->RAM[addr & 0x7ff] = value;
         return;
     }
 
@@ -2161,11 +2161,11 @@ uint16_t NesCPU::read16(uint16_t addr) {
 }
 
 void NesCPU::push(uint8_t value) {
-    RAM[0x100 + SP] = value;
+    romMapper->RAM[0x100 + SP] = value;
     SP--;
 }
 
 uint8_t NesCPU::pop() {
     SP++;
-    return RAM[0x100 + SP];
+    return romMapper->RAM[0x100 + SP];
 }

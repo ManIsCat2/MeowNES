@@ -682,6 +682,9 @@ int main(int argc, char *argv[]) {
     QAction *gameResetAction = new QAction("Reset", &window);
     QAction *gamePauseAction = new QAction("Pause", &window);
 
+    QAction *saveStateAction = new QAction("Save State", &window);
+    QAction *loadStateAction = new QAction("Load State", &window);
+
     QAction *emuConfAction = new QAction("Emulator Config", &window);
     QAction *keyEditAction = new QAction("Input Config", &window);
     QAction *audioConfAction = new QAction("Audio Config", &window);
@@ -693,6 +696,8 @@ int main(int argc, char *argv[]) {
     fileMenu->addAction(openAction);
     fileMenu->addAction(closeAction);
     fileMenu->addSeparator();
+    fileMenu->addAction(saveStateAction);
+    fileMenu->addAction(loadStateAction);
 
     gameMenu->addAction(gameResetAction);
     gameMenu->addAction(gamePauseAction);
@@ -741,6 +746,32 @@ int main(int argc, char *argv[]) {
     });
     QObject::connect(gamePauseAction, &QAction::triggered, [&]() {
         if (emuConsole) emuConsole->pause();
+    });
+    QObject::connect(saveStateAction, &QAction::triggered, [&]() {
+        QString file = QFileDialog::getSaveFileName(
+            &window,
+            "Save State",
+            "",
+            "Savestates (*.nya)"
+        );
+
+        if (!file.isEmpty()) {
+            SaveStateFile s;
+            s.Write(file.toStdString().c_str());
+        }
+    });
+    QObject::connect(loadStateAction, &QAction::triggered, [&]() {
+        QString file = QFileDialog::getOpenFileName(
+            &window,
+            "Load State",
+            "",
+            "Savestates (*.nya)"
+        );
+
+        if (!file.isEmpty()) {
+            SaveStateFile s;
+            s.Load(file.toStdString().c_str());
+        }
     });
     
     QObject::connect(keyEditAction, &QAction::triggered, [&]() { ShowInputConfigDialog(&window); });
