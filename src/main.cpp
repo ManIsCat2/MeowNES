@@ -1,7 +1,9 @@
 #include "gb/gb_apu.hpp"
+#include "nes.hpp"
 #include "nes/mappers/mapper_base.hpp"
 #include "nes/nes_cpu.hpp"
 #include "nes/nes_apu.hpp"
+#include "nes/nes_ppu.hpp"
 #include "nes/nes_rom.hpp"
 #include "nes/nes_console.hpp"
 #include "gb/gb_cpu.hpp"
@@ -14,35 +16,15 @@
 #include "qt/screen_widget.hpp"
 #include "qt/input_manager.hpp"
 #include "qt/palette_editor.hpp"
+#include "qt/memory_view.hpp"
 #include "config.hpp"
 #include "rom.hpp"
 #include "savestate.hpp"
 
-#include <QApplication>
-#include <QStyleFactory>
-#include <QMainWindow>
-#include <QMenuBar>
-#include <QFileDialog>
-#include <QMessageBox>
-#include <QVBoxLayout>
-#include <QDialog>
-#include <QSlider>
-#include <QGroupBox>
-#include <QLabel>
-#include <QComboBox>
-#include <QCheckBox>
-#include <QColorDialog>
 #include <array>
+#include <filesystem>
 #include <string_view>
-
-#ifdef _WIN32
-#include <direct.h>
-#define makeDirectory(dir) _mkdir(dir)
-#else
-#include <sys/stat.h>
-#include <sys/types.h>
-#define makeDirectory(dir) mkdir(dir, 0777)
-#endif
+#include <vector>
 
 bool romIsLoaded = false;
 int hoveredPaletteIndex = -1;
@@ -82,13 +64,6 @@ std::string joinLines(const std::vector<std::string> &lines) {
         if (i != lines.size() - 1) result += "\n";
     }
     return result;
-}
-
-QAction *makeQBool(const QString &text, QObject *parent, bool defaultBool) {
-    QAction *newAction = new QAction(text, parent);
-    newAction->setCheckable(true);
-    newAction->setChecked(defaultBool);
-    return newAction;
 }
 
 QTimer cpuTimer;
@@ -171,7 +146,7 @@ void startCPUTimer(void) {
     }
 }
 
-void ShowRomInfoDialog(QWidget* parent) {
+void ShowRomInfoDialog(QWidget *parent) {
     std::string fullInfo = "ROM isn't loaded!";
     QDialog* dialog = new QDialog(parent);
     dialog->setWindowTitle("ROM Info");
@@ -267,8 +242,10 @@ void ShowRomInfoDialog(QWidget* parent) {
     delete dialog;
 }
 
-void ShowEmulatorConfigDialog(QWidget* parent) {
-    if (!emuConsole) return;
+void ShowEmulatorConfigDialog(QWidget *parent) {
+    if (!emuConsole || !romIsLoaded) {
+        return;
+    }
     const ConsoleType type = emuConsole->getConsoleType();
     const bool isNES = (type == ConsoleType::NES);
 
@@ -334,8 +311,10 @@ void ShowEmulatorConfigDialog(QWidget* parent) {
     delete dialog;
 }
 
-void ShowAudioConfigDialog(QWidget* parent) {
-    if (!emuConsole) return;
+void ShowAudioConfigDialog(QWidget *parent) {
+    if (!emuConsole || !romIsLoaded) {
+        return;
+    }
     const ConsoleType type = emuConsole->getConsoleType();
     const bool isNES = (type == ConsoleType::NES);
 
@@ -406,8 +385,10 @@ void ShowAudioConfigDialog(QWidget* parent) {
     delete dialog;
 }
 
-void ShowInputConfigDialog(QWidget* parent) {
-    if (!emuConsole) return;
+void ShowInputConfigDialog(QWidget *parent) {
+    if (!emuConsole || !romIsLoaded) {
+        return;
+    }
     const ConsoleType type = emuConsole->getConsoleType();
     const bool isNES = (type == ConsoleType::NES);
     const bool isGB  = (type == ConsoleType::GAMEBOY);
@@ -461,8 +442,10 @@ void ShowInputConfigDialog(QWidget* parent) {
     delete dialog;
 }
 
-void ShowDisplayConfigDialog(QWidget* parent) {
-    if (!emuConsole) return;
+void ShowDisplayConfigDialog(QWidget *parent) {
+    if (!emuConsole || !romIsLoaded) {
+        return;
+    }
     const ConsoleType type = emuConsole->getConsoleType();
     const bool isNES = (type == ConsoleType::NES);
 
@@ -688,6 +671,52 @@ void ShowDisplayConfigDialog(QWidget* parent) {
     delete dialog;
 }
 
+std::vector<MemoryRegion> getMemoryRegions() {
+    std::vector<MemoryRegion> regions;
+    const ConsoleType type = emuConsole->getConsoleType();
+
+    if (type == ConsoleType::NES) {
+        regions.push_back({"RAM", getNESRom()->mapper->RAM, NES_RAM_SIZE});
+        regions.push_back({"PRG RAM", getNESRom()->mapper->PRGRam, 0x2000});
+        regions.push_back({"VRAM", nesPpu.VRAM.data(), NES_VRAM_SIZE});
+        regions.push_back({"OAM", nesPpu.OAM, 256});
+    } else if (type == ConsoleType::GAMEBOY) {
+        GbROM *rom = getGBRom();
+        regions.push_back({"WRAM", rom->mbc->WRAM, 0x8000});
+        regions.push_back({"VRAM", gbPpu.VRAM, 16384});
+        regions.push_back({"OAM", gbPpu.OAM, 160});
+        regions.push_back({"HRAM", rom->mbc->HRAM, 128});
+        regions.push_back({"Cart RAM", rom->mbc->cartRAM, rom->ramSize});
+    }
+
+    return regions;
+}
+
+void ShowMemoryViewerDialog(QWidget *parent) {
+    if (!emuConsole || !romIsLoaded) {
+        return;
+    }
+
+    std::vector<MemoryRegion> regions = getMemoryRegions();
+
+    QDialog *dialog = new QDialog(parent);
+    dialog->setWindowTitle("Memory Viewer");
+    dialog->setMinimumSize(560, 500);
+
+    QVBoxLayout *layout = new QVBoxLayout(dialog);
+    QTabWidget *tabs = new QTabWidget(dialog);
+
+    for (const auto &region : regions) {
+        MemoryHexView *view = new MemoryHexView(region, tabs);
+        tabs->addTab(view, QString::fromStdString(region.name));
+    }
+
+    layout->addWidget(tabs);
+    dialog->setLayout(layout);
+    dialog->exec();
+    delete dialog;
+}
+
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     app.setStyle(QStyleFactory::create("Fusion"));
@@ -695,7 +724,7 @@ int main(int argc, char *argv[]) {
     ScreenWidget *screen = new ScreenWidget(&window);
     globalQTWin = (void*)(&window);
 
-    makeDirectory("saves");
+    std::filesystem::create_directories("saves");
 
     Config::Load("meowconf.txt");
 
@@ -703,6 +732,7 @@ int main(int argc, char *argv[]) {
     QMenu *fileMenu = menuBar->addMenu("File");
     QMenu *gameMenu = menuBar->addMenu("Game");
     QMenu *settingsMenu = menuBar->addMenu("Options");
+    QMenu *toolsMenu = menuBar->addMenu("Tools");
     QMenu *miscMenu = menuBar->addMenu("Misc");
 
     QAction *openAction = new QAction("Open ROM", &window);
@@ -722,6 +752,8 @@ int main(int argc, char *argv[]) {
     QAction *romInfoAction = new QAction("ROM Info", &window);
     QAction *exitAction = new QAction("Exit", &window);
 
+    QAction *memViewerAction = new QAction("Memory View", &window);
+
     fileMenu->addAction(openAction);
     fileMenu->addAction(closeAction);
     fileMenu->addSeparator();
@@ -735,6 +767,8 @@ int main(int argc, char *argv[]) {
     settingsMenu->addAction(audioConfAction);
     settingsMenu->addAction(displayConfAction);
     settingsMenu->addAction(emuConfAction);
+
+    toolsMenu->addAction(memViewerAction);
 
     miscMenu->addAction(romInfoAction);
     miscMenu->addAction(exitAction);
@@ -753,10 +787,10 @@ int main(int argc, char *argv[]) {
                 startCPUTimer();
                 emuConsole->reset();
 
-                int w = (int)(emuConsole->getDisplayWidth() * 2.5);
-                int h = (int)(emuConsole->getDisplayHeight() * 2.5);
+                int w = (int)(emuConsole->getDisplayWidth() * 2);
+                int h = (int)(emuConsole->getDisplayHeight() * 2);
                 screen->resize(w, h);
-                window.resize(w, h + window.menuBar()->height());
+                window.resize(w, h);
             }
         }
     });
@@ -807,6 +841,7 @@ int main(int argc, char *argv[]) {
     QObject::connect(audioConfAction, &QAction::triggered, [&]() { ShowAudioConfigDialog(&window); });
     QObject::connect(displayConfAction, &QAction::triggered, [&]() { ShowDisplayConfigDialog(&window); });
     QObject::connect(romInfoAction, &QAction::triggered, [&]() { ShowRomInfoDialog(&window); });
+    QObject::connect(memViewerAction, &QAction::triggered, [&]() { ShowMemoryViewerDialog(&window); });
     QObject::connect(emuConfAction, &QAction::triggered, [&]() { ShowEmulatorConfigDialog(&window); });
 
     window.setCentralWidget(screen);
@@ -849,10 +884,10 @@ int main(int argc, char *argv[]) {
             startCPUTimer();
             emuConsole->reset();
 
-            int w = (int)(emuConsole->getDisplayWidth() * 2.5);
-            int h = (int)(emuConsole->getDisplayHeight() * 2.5);
+            int w = (int)(emuConsole->getDisplayWidth() * 2);
+            int h = (int)(emuConsole->getDisplayHeight() * 2);
             screen->resize(w, h);
-            window.resize(w, h + window.menuBar()->height());
+            window.resize(w, h);
         }
     }
 

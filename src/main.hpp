@@ -18,25 +18,26 @@
 #include "nes/nes_rom.hpp"
 
 #include <QApplication>
+#include <QStyleFactory>
 #include <QMainWindow>
 #include <QMenuBar>
-#include <QMenu>
-#include <QAction>
 #include <QFileDialog>
-#include <QTimer>
-#include <QDebug>
-#include <QIcon>
 #include <QMessageBox>
-#include <QWidget>
-#include <QLabel>
 #include <QVBoxLayout>
-#include <QPushButton>
-#include <QColorDialog>
-#include <QStyleFactory>
+#include <QDialog>
 #include <QSlider>
 #include <QGroupBox>
-#include <QCheckBox>
+#include <QLabel>
 #include <QComboBox>
+#include <QCheckBox>
+#include <QColorDialog>
+#include <QTabWidget>
+#include <QLineEdit>
+#include <QTextBlock>
+#include <QPlainTextEdit>
+#include <QScrollBar>
+#include <QPushButton>
+#include <QFont>
 
 extern bool romIsLoaded;
 extern void *globalQTWin;
