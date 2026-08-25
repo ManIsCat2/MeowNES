@@ -1,6 +1,8 @@
 #include "mapper_base.hpp"
 #include "../nes_rom.hpp"
 #include "../../main.hpp"
+#include <algorithm>
+#include <cstring>
 
 MapperBase::~MapperBase() {
     if (SRAM) delete[] SRAM;
@@ -153,6 +155,9 @@ void MapperBase::loadSRAM() {
 
 void MapperBase::initialize() {
     connectBus(&nesCpu, &nesPpu, nullptr);
+
+    memset(PRGRam, 0, sizeof(PRGRam));
+
     if (getNESRom()->hasBattery) {
         //DebugPrintLog("MAPPER", "Loaded Save");
         SRAM = new uint8_t[getSRAMSize()];

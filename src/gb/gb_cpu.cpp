@@ -2146,9 +2146,8 @@ void GbCPU::execute(uint8_t opcode) {
         default: {
             char errorMsg[256];
             sprintf(errorMsg, "CPU crashed after reaching unimplemented opcode 0x%02X", opcode);
-            romIsLoaded = false;
             reset();
-            DebugPrintLog("CPU", "%s", errorMsg);
+            ErrorEmuAndHalt("CPU", errorMsg);
             break;
         }
     }

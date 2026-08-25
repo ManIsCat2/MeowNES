@@ -319,9 +319,8 @@ void NesCPU::execute(uint8_t opcode) {
 
     switch (opcode) {
         case 0x02:
-            romIsLoaded = false;
             reset();
-            DebugPrintLog("CPU", "CPU crashed after reaching a JAM instruction");
+            ErrorEmuAndHalt("CPU", "CPU crashed after reaching a JAM instruction");
             break;
         // lda
         case 0xA9: // LDA immediate
@@ -1919,9 +1918,8 @@ void NesCPU::execute(uint8_t opcode) {
         default:
             char errorMsg[256];
             sprintf(errorMsg, "CPU crashed after reaching unimplemented opcode 0x%02X", opcode);
-            romIsLoaded = false;
             reset();
-            DebugPrintLog("CPU", "%s", errorMsg);
+            ErrorEmuAndHalt("CPU", errorMsg);
             break;
     }
    // DebugPrintLog("CPU", "Proccessed 0x%x", opcode);

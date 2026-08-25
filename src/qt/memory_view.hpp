@@ -1,10 +1,15 @@
 #pragma once
 
 #include "../main.hpp"
+
 #include <QTimer>
+#include <QKeyEvent>
+#include <QScrollBar>
+#include <QTextBlock>
 
 struct MemoryRegion {
     std::string name;
+    bool readOnly = false;
     uint8_t *data = nullptr;
     size_t size = 0;
 };
@@ -36,30 +41,14 @@ public:
         hexEdit->setReadOnly(true);
         hexEdit->setFont(QFont("Courier New", 10));
         hexEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
-
-        QHBoxLayout *pokeRow = new QHBoxLayout();
-        QLabel *addrLabel = new QLabel("Poke addr (hex):", this);
-        pokeAddrEdit = new QLineEdit(this);
-        pokeAddrEdit->setFixedWidth(70);
-        QLabel *valLabel = new QLabel("Value (hex):", this);
-        pokeValEdit = new QLineEdit(this);
-        pokeValEdit->setFixedWidth(50);
-        QPushButton *pokeButton = new QPushButton("Poke", this);
-
-        pokeRow->addWidget(addrLabel);
-        pokeRow->addWidget(pokeAddrEdit);
-        pokeRow->addWidget(valLabel);
-        pokeRow->addWidget(pokeValEdit);
-        pokeRow->addWidget(pokeButton);
-        pokeRow->addStretch();
+        
+        hexEdit->installEventFilter(this);
 
         layout->addLayout(topRow);
         layout->addWidget(hexEdit);
-        layout->addLayout(pokeRow);
 
         QObject::connect(gotoButton, &QPushButton::clicked, this, &MemoryHexView::gotoAddress);
         QObject::connect(refreshButton, &QPushButton::clicked, this, &MemoryHexView::refresh);
-        QObject::connect(pokeButton, &QPushButton::clicked, this, &MemoryHexView::pokeByte);
 
         refreshTimer = new QTimer(this);
         QObject::connect(refreshTimer, &QTimer::timeout, this, [this]() {
@@ -67,11 +56,16 @@ public:
         });
         refreshTimer->start(200);
 
-        refresh();
+        refresh(true);
     }
 
-    void refresh() {
+    void refresh(bool force=false) {
+        if (region.readOnly && !force) return;
         int scrollValue = hexEdit->verticalScrollBar()->value();
+        
+        QTextCursor currentCursor = hexEdit->textCursor();
+        int bNum = currentCursor.blockNumber();
+        int bPos = currentCursor.positionInBlock();
 
         QString text;
         text.reserve((int)(region.size * 4));
@@ -97,9 +91,113 @@ public:
         }
 
         hexEdit->setPlainText(text);
+        
+        QTextBlock block = hexEdit->document()->findBlockByNumber(bNum);
+        if (block.isValid()) {
+            QTextCursor newCursor(block);
+            newCursor.setPosition(block.position() + std::min(bPos, block.length() - 1));
+            hexEdit->setTextCursor(newCursor);
+        }
+        
         hexEdit->verticalScrollBar()->setValue(scrollValue);
     }
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override {
+        if (obj == hexEdit && event->type() == QEvent::KeyPress) {
+            QKeyEvent *keyEvent = static_cast<QKeyEvent *>(event);
+            
+            switch (keyEvent->key()) {
+                case Qt::Key_Up:
+                case Qt::Key_Down:
+                case Qt::Key_Left:
+                case Qt::Key_Right:
+                case Qt::Key_PageUp:
+                case Qt::Key_PageDown:
+                    return false;
+            }
 
+            QString text = keyEvent->text();
+            if (text.isEmpty()) return false;
+
+            char c = text[0].toUpper().toLatin1();
+            if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F')) {
+                uint8_t nibble = (c >= '0' && c <= '9') ? (c - '0') : (c - 'A' + 10);
+                
+                QTextCursor cursor = hexEdit->textCursor();
+                
+                if (cursor.hasSelection()) {
+                    cursor.clearSelection();
+                    hexEdit->setTextCursor(cursor);
+                }
+                
+                int row = cursor.blockNumber();
+                int col = cursor.positionInBlock();
+                
+                int byteIdx = -1;
+                bool isHigh = false;
+                
+                if (col >= 6 && col <= 28) {
+                    int rel = col - 6;
+                    if (rel % 3 != 2) {
+                        byteIdx = rel / 3;
+                        isHigh = (rel % 3 == 0);
+                    }
+                } else if (col >= 31 && col <= 53) {
+                    int rel = col - 31;
+                    if (rel % 3 != 2) {
+                        byteIdx = 8 + (rel / 3);
+                        isHigh = (rel % 3 == 0);
+                    }
+                }
+                
+                if (byteIdx != -1) {
+                    size_t memAddr = (row * 16) + byteIdx;
+                    if (memAddr < region.size) {
+                        uint8_t currentVal = region.data[memAddr];
+                        if (isHigh) {
+                            region.data[memAddr] = (currentVal & 0x0F) | (nibble << 4);
+                        } else {
+                            region.data[memAddr] = (currentVal & 0xF0) | nibble;
+                        }
+                        
+                        hexEdit->setReadOnly(false);
+                        cursor.deleteChar(); 
+                        cursor.insertText(QString(c));
+                        
+                        if (!isHigh) {
+                            if (byteIdx == 7) {
+                                cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, 2);
+                            } else if (byteIdx == 15) {
+                                if (row < hexEdit->document()->blockCount() - 1) {
+                                    cursor.movePosition(QTextCursor::NextBlock, QTextCursor::MoveAnchor);
+                                    cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, 6);
+                                } else {
+                                    cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, 1);
+                                }
+                            } else {
+                                cursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, 1);
+                            }
+                        }
+                        hexEdit->setTextCursor(cursor);
+                        
+                        int asciiCol = 56 + byteIdx; 
+                        QTextCursor asciiCursor = hexEdit->textCursor();
+                        asciiCursor.setPosition(asciiCursor.block().position() + asciiCol);
+                        
+                        uint8_t newVal = region.data[memAddr];
+                        QChar asciiChar = (newVal >= 0x20 && newVal < 0x7F) ? QChar((char)newVal) : QChar('.');
+                        
+                        asciiCursor.deleteChar();
+                        asciiCursor.insertText(QString(asciiChar));
+                        hexEdit->setReadOnly(true);
+                    }
+                }
+                return true;
+            }
+            return true;
+        }
+        return QWidget::eventFilter(obj, event);
+    }
 private:
     void gotoAddress() {
         bool ok = false;
@@ -107,27 +205,19 @@ private:
         if (!ok) return;
 
         int row = (int)(addr / 16);
-        QTextCursor cursor(hexEdit->document()->findBlockByNumber(row));
-        hexEdit->setTextCursor(cursor);
-        hexEdit->centerCursor();
-    }
-
-    void pokeByte() {
-        bool okAddr = false, okVal = false;
-        unsigned int addr = pokeAddrEdit->text().toUInt(&okAddr, 16);
-        unsigned int val = pokeValEdit->text().toUInt(&okVal, 16);
-
-        if (!okAddr || !okVal || addr >= region.size || val > 0xFF) return;
-
-        region.data[addr] = (uint8_t)(val);
-        refresh();
+        QTextBlock block = hexEdit->document()->findBlockByNumber(row);
+        if (block.isValid()) {
+            QTextCursor cursor(block);
+            cursor.setPosition(block.position() + 6);
+            hexEdit->setTextCursor(cursor);
+            hexEdit->centerCursor();
+            hexEdit->setFocus();
+        }
     }
 
     MemoryRegion region;
     QPlainTextEdit *hexEdit;
     QLineEdit *gotoEdit;
-    QLineEdit *pokeAddrEdit;
-    QLineEdit *pokeValEdit;
     QCheckBox *autoRefreshCheck;
     QTimer *refreshTimer;
 };

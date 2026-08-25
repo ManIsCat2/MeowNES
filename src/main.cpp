@@ -22,6 +22,7 @@
 #include "savestate.hpp"
 
 #include <array>
+#include <algorithm>
 #include <filesystem>
 #include <string_view>
 #include <vector>
@@ -30,6 +31,9 @@ bool romIsLoaded = false;
 int hoveredPaletteIndex = -1;
 
 void *globalQTWin;
+
+QAction *patternViewerAction;
+QAction *nametableViewerAction;
 
 const unsigned char EMeowlatorIcon[] = {
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
@@ -52,6 +56,22 @@ const unsigned char EMeowlatorIcon[] = {
     0x1b, 0x22, 0x0c, 0x2c, 0xbb, 0xb7, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
     0x4e, 0x44, 0xae, 0x42, 0x60, 0x82
 };
+
+void UpdateUI(void) {
+    bool showNesTools = romIsLoaded && emuConsole && emuConsole->getConsoleType() == ConsoleType::NES;
+    patternViewerAction->setVisible(showNesTools);
+    nametableViewerAction->setVisible(showNesTools);
+}
+
+void ErrorEmuAndHalt(const char *title, const char *err) {
+    QMainWindow *win = (QMainWindow*)(globalQTWin);
+
+    romIsLoaded = false;
+    DebugPrintLog(title, "%s", err);
+    QMessageBox::critical(win, "Error", QString(err));
+
+    UpdateUI();
+}
 
 std::string joinLines(const std::vector<std::string> &lines) {
     std::string result;
@@ -76,8 +96,6 @@ const std::array<std::string_view, 4> allowedExts = {
 };
 
 bool loadConsoleWithGame(const std::string &file) {
-    QMainWindow *win = (QMainWindow*)(globalQTWin);
-
     cpuTimer.stop();
     romIsLoaded = false;
 
@@ -102,9 +120,7 @@ bool loadConsoleWithGame(const std::string &file) {
     }
 
     if (!allow) {
-        romIsLoaded = false;
-        DebugPrintLog("LOADER", "Console not supported");
-        QMessageBox::critical(win, "Error", "Console not supported");
+        ErrorEmuAndHalt("LOADER", "Console not supported");
         return false;
     }
 
@@ -147,88 +163,88 @@ void startCPUTimer(void) {
 }
 
 void ShowRomInfoDialog(QWidget *parent) {
+    if (!emuConsole || !romIsLoaded) {
+        return;
+    }
     std::string fullInfo = "ROM isn't loaded!";
     QDialog* dialog = new QDialog(parent);
     dialog->setWindowTitle("ROM Info");
     dialog->setFixedSize(350, 250);
 
-    if (emuConsole && romIsLoaded) {
-        const ConsoleType type = emuConsole->getConsoleType();
-        const bool isNES = (type == ConsoleType::NES);
-        const bool isGB  = (type == ConsoleType::GAMEBOY);
-        std::string fileStr = "File: " + getRom()->Name;
+    const ConsoleType type = emuConsole->getConsoleType();
+    const bool isNES = (type == ConsoleType::NES);
+    const bool isGB  = (type == ConsoleType::GAMEBOY);
+    std::string fileStr = "File: " + getRom()->Name;
 
-        if (isNES) {
-            NesROM* rom = getNESRom();
+    if (isNES) {
+        NesROM* rom = getNESRom();
 
-            if (rom->Version == HeaderVersion::UNIF) {
-                char PRGSizeStr[128];
-                snprintf(PRGSizeStr, sizeof(PRGSizeStr), "PRG Size: %zu KiB", rom->PRGRomSize / 1024);
+        if (rom->Version == HeaderVersion::UNIF) {
+            char PRGSizeStr[128];
+            snprintf(PRGSizeStr, sizeof(PRGSizeStr), "PRG Size: %zu KiB", rom->PRGRomSize / 1024);
 
-                char CHRSizeStr[128];
-                snprintf(CHRSizeStr, sizeof(CHRSizeStr), "CHR Size: %zu KiB", rom->CHRRomSize / 1024);
+            char CHRSizeStr[128];
+            snprintf(CHRSizeStr, sizeof(CHRSizeStr), "CHR Size: %zu KiB", rom->CHRRomSize / 1024);
 
-                std::string mapperStr = "Mapper: " + std::string(rom->mapper ? rom->mapper->getName() : "Unknown") + " (Mapper " + std::to_string(rom->MapperID) + ")";
-                std::string mirrorStr = "Mirroring: " + std::string(rom->Mirroring == MirrorMode::HORIZONTAL ? "Horizontal" : "Vertical");
+            std::string mapperStr = "Mapper: " + std::string(rom->mapper ? rom->mapper->getName() : "Unknown") + " (Mapper " + std::to_string(rom->MapperID) + ")";
+            std::string mirrorStr = "Mirroring: " + std::string(rom->Mirroring == MirrorMode::HORIZONTAL ? "Horizontal" : "Vertical");
 
-                std::string batteryStr = "Battery: " + std::string(rom->hasBattery ? "Yes" : "No");
-                std::string CHRRamStr = "CHR-RAM: " + std::string(rom->CHRRomSize == 0 ? "Yes" : "No");
-                char batterySizeStr[128];
-                size_t SRAMSize = rom->hasBattery && rom->mapper ? rom->mapper->getSRAMSize() : 0;
-                snprintf(batterySizeStr, sizeof(batterySizeStr), "SRAM/Battery Size: 0x%zx (%zu)", SRAMSize, SRAMSize);
-                char RESETVecStr[128];
-                snprintf(RESETVecStr, sizeof(RESETVecStr), "RESET Vector: 0x%x", rom->ResetVec);
-                fullInfo = joinLines({fileStr, "Header Version: UNIF", PRGSizeStr, CHRSizeStr, mapperStr, mirrorStr, batteryStr, CHRRamStr, batterySizeStr, RESETVecStr});
-            } else {
-                std::string HeaderHexStr;
-                HeaderHexStr.reserve(32);
+            std::string batteryStr = "Battery: " + std::string(rom->hasBattery ? "Yes" : "No");
+            std::string CHRRamStr = "CHR-RAM: " + std::string(rom->CHRRomSize == 0 ? "Yes" : "No");
+            char batterySizeStr[128];
+            size_t SRAMSize = rom->hasBattery && rom->mapper ? rom->mapper->getSRAMSize() : 0;
+            snprintf(batterySizeStr, sizeof(batterySizeStr), "SRAM/Battery Size: 0x%zx (%zu)", SRAMSize, SRAMSize);
+            char RESETVecStr[128];
+            snprintf(RESETVecStr, sizeof(RESETVecStr), "RESET Vector: 0x%x", rom->ResetVec);
+            fullInfo = joinLines({fileStr, "Header Version: UNIF", PRGSizeStr, CHRSizeStr, mapperStr, mirrorStr, batteryStr, CHRRamStr, batterySizeStr, RESETVecStr});
+        } else {
+            std::string HeaderHexStr;
+            HeaderHexStr.reserve(32);
 
-                for (int i = 0; i < 8; i++) {
-                    char Buf[4];
-                    snprintf(Buf, sizeof(Buf), "%02X", rom->Header[i]);
-
-                    HeaderHexStr += Buf;
-                    if (i < 7) HeaderHexStr += " ";
-                }
-
-                HeaderHexStr = "Header: " + HeaderHexStr;
-                std::string headVerStr = "Header Version: " + std::string(rom->Version == HeaderVersion::NES2_0 ? "NES2.0" : "INES");
-
-                char PRGSizeStr[128];
-                snprintf(PRGSizeStr, sizeof(PRGSizeStr), "PRG Size: %uKiB (%u x 16KiB)", rom->PRGNumPages * 16, rom->PRGNumPages);
-
-                char CHRSizeStr[128];
-                snprintf(CHRSizeStr, sizeof(CHRSizeStr), "CHR Size: %uKiB (%u x 8KiB)", rom->CHRNumPages * 8, rom->CHRNumPages);
-
-                std::string mapperStr = "Mapper: " + std::string(rom->mapper ? rom->mapper->getName() : (rom->MapperID ? "Unknown" : "NROM")) + " (Mapper " + std::to_string(rom->MapperID) + ")";
-                std::string subMapperStr = "Sub Mapper: " + std::to_string(rom->SubMapperID);
-                std::string mirrorStr = "Mirroring: " + std::string(rom->Mirroring == MirrorMode::HORIZONTAL ? "Horizontal" : "Vertical");
-                std::string batteryStr = "Battery: " + std::string(rom->hasBattery ? "Yes" : "No");
-                std::string CHRRamStr = "CHR-RAM: " + std::string(rom->CHRRomSize == 0 ? "Yes" : "No");
-
-                char batterySizeStr[128];
-                size_t SRAMSize = rom->hasBattery && rom->mapper ? rom->mapper->getSRAMSize() : 0;
-                snprintf(batterySizeStr, sizeof(batterySizeStr), "SRAM/Battery Size: 0x%zx (%zu)", SRAMSize, SRAMSize);
-                char RESETVecStr[128];
-                snprintf(RESETVecStr, sizeof(RESETVecStr), "RESET Vector: 0x%x", rom->ResetVec);
-                fullInfo = joinLines({fileStr, HeaderHexStr, headVerStr, PRGSizeStr, CHRSizeStr, mapperStr, subMapperStr, mirrorStr, batteryStr, CHRRamStr, batterySizeStr, RESETVecStr});
+            for (int i = 0; i < 8; i++) {
+                char Buf[4];
+                snprintf(Buf, sizeof(Buf), "%02X", rom->Header[i]);
+                HeaderHexStr += Buf;
+                if (i < 7) HeaderHexStr += " ";
             }
-        } else if (isGB) {
-            GbROM *rom = getGBRom();
 
-            std::string titleStr = "Title: " + rom->Title;
-            std::string mapperStr = "Mapper: " + std::string(rom->mbc->getName()) + " (Mapper " + std::to_string(rom->cartType)+")";
-            std::string batteryStr = "Battery: " + std::string(rom->hasBattery() ? "Yes" : "No");
-            std::string RTCStr = "RTC: " + std::string(rom->hasRTC() ? "Yes" : "No");
-            std::string RAMStr = "External RAM: " + std::string(rom->hasRAM() ? "Yes" : "No");
+            HeaderHexStr = "Header: " + HeaderHexStr;
+            std::string headVerStr = "Header Version: " + std::string(rom->Version == HeaderVersion::NES2_0 ? "NES2.0" : "INES");
 
-            char ROMSizeStr[128];
-            snprintf(ROMSizeStr, sizeof(ROMSizeStr), "ROM Size: %uKiB", rom->RomSize / 1024);
-            char RAMSizeStr[128];
-            snprintf(RAMSizeStr, sizeof(RAMSizeStr), "RAM Size: %uKiB", rom->ramSize / 1024);
+            char PRGSizeStr[128];
+            snprintf(PRGSizeStr, sizeof(PRGSizeStr), "PRG Size: %uKiB (%u x 16KiB)", rom->PRGNumPages * 16, rom->PRGNumPages);
 
-            fullInfo = joinLines({fileStr, titleStr, mapperStr, batteryStr, RTCStr, RAMStr, ROMSizeStr, RAMSizeStr});
+            char CHRSizeStr[128];
+            snprintf(CHRSizeStr, sizeof(CHRSizeStr), "CHR Size: %uKiB (%u x 8KiB)", rom->CHRNumPages * 8, rom->CHRNumPages);
+
+            std::string mapperStr = "Mapper: " + std::string(rom->mapper ? rom->mapper->getName() : (rom->MapperID ? "Unknown" : "NROM")) + " (Mapper " + std::to_string(rom->MapperID) + ")";
+            std::string subMapperStr = "Sub Mapper: " + std::to_string(rom->SubMapperID);
+            std::string mirrorStr = "Mirroring: " + std::string(rom->Mirroring == MirrorMode::HORIZONTAL ? "Horizontal" : "Vertical");
+            std::string batteryStr = "Battery: " + std::string(rom->hasBattery ? "Yes" : "No");
+            std::string CHRRamStr = "CHR-RAM: " + std::string(rom->CHRRomSize == 0 ? "Yes" : "No");
+
+            char batterySizeStr[128];
+            size_t SRAMSize = rom->hasBattery && rom->mapper ? rom->mapper->getSRAMSize() : 0;
+            snprintf(batterySizeStr, sizeof(batterySizeStr), "SRAM/Battery Size: 0x%zx (%zu)", SRAMSize, SRAMSize);
+            char RESETVecStr[128];
+            snprintf(RESETVecStr, sizeof(RESETVecStr), "RESET Vector: 0x%x", rom->ResetVec);
+            fullInfo = joinLines({fileStr, HeaderHexStr, headVerStr, PRGSizeStr, CHRSizeStr, mapperStr, subMapperStr, mirrorStr, batteryStr, CHRRamStr, batterySizeStr, RESETVecStr});
         }
+    } else if (isGB) {
+        GbROM *rom = getGBRom();
+
+        std::string titleStr = "Title: " + rom->Title;
+        std::string mapperStr = "Mapper: " + std::string(rom->mbc->getName()) + " (Mapper " + std::to_string(rom->cartType)+")";
+        std::string batteryStr = "Battery: " + std::string(rom->hasBattery() ? "Yes" : "No");
+        std::string RTCStr = "RTC: " + std::string(rom->hasRTC() ? "Yes" : "No");
+        std::string RAMStr = "External RAM: " + std::string(rom->hasRAM() ? "Yes" : "No");
+
+        char ROMSizeStr[128];
+        snprintf(ROMSizeStr, sizeof(ROMSizeStr), "ROM Size: %uKiB", rom->RomSize / 1024);
+        char RAMSizeStr[128];
+        snprintf(RAMSizeStr, sizeof(RAMSizeStr), "RAM Size: %uKiB", rom->ramSize / 1024);
+
+        fullInfo = joinLines({fileStr, titleStr, mapperStr, batteryStr, RTCStr, RAMStr, ROMSizeStr, RAMSizeStr});
     }
 
     QLabel* label = new QLabel(QString::fromStdString(fullInfo), dialog);
@@ -676,17 +692,21 @@ std::vector<MemoryRegion> getMemoryRegions() {
     const ConsoleType type = emuConsole->getConsoleType();
 
     if (type == ConsoleType::NES) {
-        regions.push_back({"RAM", getNESRom()->mapper->RAM, NES_RAM_SIZE});
-        regions.push_back({"PRG RAM", getNESRom()->mapper->PRGRam, 0x2000});
-        regions.push_back({"VRAM", nesPpu.VRAM.data(), NES_VRAM_SIZE});
-        regions.push_back({"OAM", nesPpu.OAM, 256});
+        NesROM *rom = getNESRom();
+        regions.push_back({"ROM", true, rom->ROM, rom->PRGRomSize});
+        if (rom->CHRRomSize) regions.push_back({"CHR", true, rom->CHR, rom->CHRRomSize});
+        regions.push_back({"RAM", false, rom->mapper->RAM, NES_RAM_SIZE});
+        regions.push_back({"PRG RAM", false, rom->mapper->PRGRam, 0x2000});
+        regions.push_back({"VRAM", false, nesPpu.VRAM.data(), NES_VRAM_SIZE});
+        regions.push_back({"OAM", false, nesPpu.OAM, 256});
     } else if (type == ConsoleType::GAMEBOY) {
         GbROM *rom = getGBRom();
-        regions.push_back({"WRAM", rom->mbc->WRAM, 0x8000});
-        regions.push_back({"VRAM", gbPpu.VRAM, 16384});
-        regions.push_back({"OAM", gbPpu.OAM, 160});
-        regions.push_back({"HRAM", rom->mbc->HRAM, 128});
-        regions.push_back({"Cart RAM", rom->mbc->cartRAM, rom->ramSize});
+        regions.push_back({"ROM", true, rom->ROM, rom->RomSize});
+        regions.push_back({"WRAM", false, rom->mbc->WRAM, 0x8000});
+        regions.push_back({"VRAM", false, gbPpu.VRAM, 16384});
+        regions.push_back({"OAM", false, gbPpu.OAM, 160});
+        regions.push_back({"HRAM", false, rom->mbc->HRAM, 128});
+        regions.push_back({"Cart RAM", false, rom->mbc->cartRAM, rom->ramSize});
     }
 
     return regions;
@@ -713,6 +733,183 @@ void ShowMemoryViewerDialog(QWidget *parent) {
 
     layout->addWidget(tabs);
     dialog->setLayout(layout);
+    dialog->exec();
+    delete dialog;
+}
+
+const QRgb CHRGrayscaleRamp[4] = {
+    qRgb(0x00, 0x00, 0x00),
+    qRgb(0x60, 0x60, 0x60),
+    qRgb(0xB0, 0xB0, 0xB0),
+    qRgb(0xFF, 0xFF, 0xFF)
+};
+
+void DrawCHRTile(QImage &img, int destX, int destY, MapperBase *mapper, uint16_t baseAddr, uint8_t tileIndex) {
+    uint16_t tileAddr = (uint16_t)(baseAddr + tileIndex * 16);
+
+    for (int row = 0; row < 8; row++) {
+        uint8_t lo = mapper->readCHR((uint16_t)(tileAddr + row));
+        uint8_t hi = mapper->readCHR((uint16_t)(tileAddr + row + 8));
+
+        for (int col = 0; col < 8; col++) {
+            int bit = 7 - col;
+            uint8_t colorIdx = (uint8_t)((((hi >> bit) & 1) << 1) | ((lo >> bit) & 1));
+            img.setPixel(destX + col, destY + row, CHRGrayscaleRamp[colorIdx]);
+        }
+    }
+}
+
+QImage BuildPatternTableImage(MapperBase *mapper, int table) {
+    QImage img(128, 128, QImage::Format_RGB32);
+    uint16_t baseAddr = (uint16_t)(table == 0 ? 0x0000 : 0x1000);
+
+    for (int ty = 0; ty < 16; ty++) {
+        for (int tx = 0; tx < 16; tx++) {
+            uint8_t tileIndex = (uint8_t)(ty * 16 + tx);
+            DrawCHRTile(img, tx * 8, ty * 8, mapper, baseAddr, tileIndex);
+        }
+    }
+
+    return img;
+}
+
+QImage BuildNametableImage(MapperBase *mapper, const uint8_t *ntData, uint16_t patternBaseAddr) {
+    QImage img(256, 240, QImage::Format_RGB32);
+
+    for (int ty = 0; ty < 30; ty++) {
+        for (int tx = 0; tx < 32; tx++) {
+            uint8_t tileIndex = ntData[ty * 32 + tx];
+            DrawCHRTile(img, tx * 8, ty * 8, mapper, patternBaseAddr, tileIndex);
+        }
+    }
+
+    return img;
+}
+
+void ShowPatternViewerDialog(QWidget *parent) {
+    if (!emuConsole || !romIsLoaded || emuConsole->getConsoleType() != ConsoleType::NES) {
+        return;
+    }
+
+    MapperBase *mapper = getNESRom()->mapper;
+
+    QDialog *dialog = new QDialog(parent);
+    dialog->setWindowTitle("Pattern Table Viewer");
+    dialog->setFixedSize(580, 320); 
+
+    QVBoxLayout *mainLayout = new QVBoxLayout(dialog);
+    QHBoxLayout *tablesLayout = new QHBoxLayout();
+
+    QLabel *imgLabels[2] = { nullptr, nullptr };
+
+    for (int t = 0; t < 2; t++) {
+        QVBoxLayout *colLayout = new QVBoxLayout();
+
+        QLabel *title = new QLabel(t == 0 ? "Pattern Table 0 ($0000-$0FFF)" : "Pattern Table 1 ($1000-$1FFF)", dialog);
+        title->setAlignment(Qt::AlignCenter);
+
+        QLabel *imgLabel = new QLabel(dialog);
+        imgLabel->setFixedSize(256, 256);
+        imgLabels[t] = imgLabel;
+
+        colLayout->addWidget(title);
+        colLayout->addWidget(imgLabel, 0, Qt::AlignCenter);
+        tablesLayout->addLayout(colLayout);
+    }
+
+    auto refresh = [mapper, imgLabels]() {
+        for (int t = 0; t < 2; t++) {
+            QImage img = BuildPatternTableImage(mapper, t);
+            QPixmap pix = QPixmap::fromImage(img).scaled(256, 256, Qt::KeepAspectRatio, Qt::FastTransformation);
+            imgLabels[t]->setPixmap(pix);
+        }
+    };
+
+    refresh();
+
+    QTimer *autoTimer = new QTimer(dialog);
+    QObject::connect(autoTimer, &QTimer::timeout, refresh);
+    autoTimer->start(100);
+
+    mainLayout->addLayout(tablesLayout);
+
+    dialog->setLayout(mainLayout);
+    dialog->exec();
+    delete dialog;
+}
+
+void ShowNametableViewerDialog(QWidget *parent) {
+    if (!emuConsole || !romIsLoaded || emuConsole->getConsoleType() != ConsoleType::NES) {
+        return;
+    }
+
+    MapperBase *mapper = getNESRom()->mapper;
+
+    const int nametableCount = 4;
+    const int cols = 2;
+    const int rows = (nametableCount + cols - 1) / cols;
+
+    QDialog *dialog = new QDialog(parent);
+    dialog->setWindowTitle("Nametable Viewer");
+
+    QVBoxLayout *mainLayout = new QVBoxLayout(dialog);
+    QHBoxLayout *controlsLayout = new QHBoxLayout();
+
+    QLabel *ptLabelText = new QLabel("Pattern Table:", dialog);
+    QComboBox *ptComboBox = new QComboBox(dialog);
+    ptComboBox->addItem("0 ($0000)", 0);
+    ptComboBox->addItem("1 ($1000)", 1);
+
+    controlsLayout->addWidget(ptLabelText);
+    controlsLayout->addWidget(ptComboBox);
+    controlsLayout->addStretch();
+
+    const int combinedW = cols * 256;
+    const int combinedH = rows * 240;
+
+    QLabel *imgLabel = new QLabel();
+    imgLabel->setFixedSize(combinedW, combinedH);
+
+    auto refresh = [&]() {
+        int ptIndex = ptComboBox->currentData().toInt();
+        uint16_t patternBaseAddr = (uint16_t)(ptIndex == 0 ? 0x0000 : 0x1000);
+
+        QImage combined(combinedW, combinedH, QImage::Format_RGB32);
+        combined.fill(Qt::black);
+
+        QPainter painter(&combined);
+        for (int i = 0; i < nametableCount; i++) {
+            uint16_t ntBaseAddr = 0x2000 + (i * 0x400); 
+            uint8_t ntData[1024];
+
+            for (int offset = 0; offset < 1024; offset++) {
+                ntData[offset] = mapper->readVRAM(ntBaseAddr + offset);
+            }
+
+            QImage nt = BuildNametableImage(mapper, ntData, patternBaseAddr);
+            int col = i % cols;
+            int row = i / cols;
+            painter.drawImage(col * 256, row * 240, nt);
+        }
+        painter.end();
+
+        QPixmap pix = QPixmap::fromImage(combined).scaled(combinedW, combinedH, Qt::KeepAspectRatio, Qt::FastTransformation);
+        imgLabel->setPixmap(pix);
+    };
+
+    refresh();
+
+    QObject::connect(ptComboBox, &QComboBox::currentIndexChanged, refresh);
+
+    QTimer *autoTimer = new QTimer(dialog);
+    QObject::connect(autoTimer, &QTimer::timeout, refresh);
+    autoTimer->start(100);
+
+    mainLayout->addLayout(controlsLayout);
+    mainLayout->addWidget(imgLabel); 
+
+    dialog->setLayout(mainLayout);
+    dialog->setFixedSize(combinedW + 24, combinedH + 60); 
     dialog->exec();
     delete dialog;
 }
@@ -752,7 +949,9 @@ int main(int argc, char *argv[]) {
     QAction *romInfoAction = new QAction("ROM Info", &window);
     QAction *exitAction = new QAction("Exit", &window);
 
-    QAction *memViewerAction = new QAction("Memory View", &window);
+    QAction *memViewerAction = new QAction("Memory Viewer", &window);
+    patternViewerAction = new QAction("Pattern Table Viewer", &window);
+    nametableViewerAction = new QAction("Nametable Viewer", &window);
 
     fileMenu->addAction(openAction);
     fileMenu->addAction(closeAction);
@@ -769,6 +968,12 @@ int main(int argc, char *argv[]) {
     settingsMenu->addAction(emuConfAction);
 
     toolsMenu->addAction(memViewerAction);
+    toolsMenu->addSeparator();
+    toolsMenu->addAction(patternViewerAction);
+    toolsMenu->addAction(nametableViewerAction);
+
+    patternViewerAction->setVisible(false);
+    nametableViewerAction->setVisible(false);
 
     miscMenu->addAction(romInfoAction);
     miscMenu->addAction(exitAction);
@@ -792,6 +997,7 @@ int main(int argc, char *argv[]) {
                 screen->resize(w, h);
                 window.resize(w, h);
             }
+            UpdateUI();
         }
     });
     QObject::connect(closeAction, &QAction::triggered, [&]() {
@@ -802,6 +1008,7 @@ int main(int argc, char *argv[]) {
             }
             romIsLoaded = false;
         }
+        UpdateUI();
     });
     QObject::connect(gameResetAction, &QAction::triggered, [&]() {
         if (emuConsole) emuConsole->reset();
@@ -842,6 +1049,8 @@ int main(int argc, char *argv[]) {
     QObject::connect(displayConfAction, &QAction::triggered, [&]() { ShowDisplayConfigDialog(&window); });
     QObject::connect(romInfoAction, &QAction::triggered, [&]() { ShowRomInfoDialog(&window); });
     QObject::connect(memViewerAction, &QAction::triggered, [&]() { ShowMemoryViewerDialog(&window); });
+    QObject::connect(patternViewerAction, &QAction::triggered, [&]() { ShowPatternViewerDialog(&window); });
+    QObject::connect(nametableViewerAction, &QAction::triggered, [&]() { ShowNametableViewerDialog(&window); });
     QObject::connect(emuConfAction, &QAction::triggered, [&]() { ShowEmulatorConfigDialog(&window); });
 
     window.setCentralWidget(screen);
@@ -889,6 +1098,7 @@ int main(int argc, char *argv[]) {
             screen->resize(w, h);
             window.resize(w, h);
         }
+        UpdateUI();
     }
 
     return app.exec();

@@ -114,7 +114,9 @@ bool NesROM::loadINES(const std::vector<uint8_t> &data, const std::string &romNa
     MapperBase* romMapperNew = GetMapper(romMapperID, romSubMapperID);
 
     if (!romMapperNew) {
-        DebugPrintLog("ROM", "Unimplemented mapper %u", romMapperID);
+        char err[128];
+        sprintf(err, "ROM has unimplemented mapper %u", romMapperID);
+        ErrorEmuAndHalt("ROM", err);
         return false;
     }
 
@@ -174,7 +176,7 @@ bool NesROM::loadUNIF(const std::vector<uint8_t> &data, const std::string &romNa
 
         offset += 8;
         if (offset + chunkSize > data.size()) {
-            DebugPrintLog("ROM", "Invalid UNIF chunk size");
+            ErrorEmuAndHalt("ROM", "UNIF ROM has invalid UNIF chunk size");
             return false;
         }
 
@@ -209,7 +211,7 @@ bool NesROM::loadUNIF(const std::vector<uint8_t> &data, const std::string &romNa
     }
 
     if (boardName.empty()) {
-        DebugPrintLog("ROM", "UNIF ROM has no board name");
+        ErrorEmuAndHalt("ROM", "UNIF ROM has no board name");
         return false;
     }
 
@@ -229,13 +231,17 @@ bool NesROM::loadUNIF(const std::vector<uint8_t> &data, const std::string &romNa
     } else if (boardName == "NES-MMC4") {
         romMapperID = 10;
     } else {
-        DebugPrintLog("ROM", "Unknown UNIF board '%s'", boardName.c_str());
+        char err[128];
+        sprintf(err, "Unknown UNIF board '%s'", boardName.c_str());
+        ErrorEmuAndHalt("ROM", err);
         return false;
     }
 
     MapperBase* romMapperNew = GetMapper(romMapperID, 0);
     if (!romMapperNew) {
-        DebugPrintLog("ROM", "Unsupported UNIF mapper %u", romMapperID);
+        char err[128];
+        sprintf(err, "Unsupported UNIF mapper %u", romMapperID);
+        ErrorEmuAndHalt("ROM", err);
         return false;
     }
 
@@ -275,7 +281,9 @@ bool NesROM::load(const std::string &filename) {
     std::ifstream rom(filename, std::ios::binary | std::ios::ate);
 
     if (!rom) {
-        DebugPrintLog("ROM", "Failed to open ROM '%s'", filename.c_str());
+        char err[128];
+        sprintf(err, "Failed to open ROM '%s'", filename.c_str());
+        ErrorEmuAndHalt("ROM", err);
         return false;
     }
 
@@ -287,7 +295,9 @@ bool NesROM::load(const std::string &filename) {
 
     std::vector<uint8_t> data((size_t)fsize);
     if (!rom.read((char*)(data.data()), fsize)) {
-        DebugPrintLog("ROM", "Failed to read ROM '%s'", filename.c_str());
+        char err[128];
+        sprintf(err, "Failed to read ROM '%s'", filename.c_str());
+        ErrorEmuAndHalt("ROM", err);
         return false;
     }
 

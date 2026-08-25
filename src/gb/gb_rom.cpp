@@ -147,7 +147,9 @@ bool GbROM::load(const std::string &filename) {
     }
 
     if (!mbc) {
-        DebugPrintLog("ROM", "Unimplemented mapper: %u, failed to open ROM", cartType);
+        char err[256];
+        sprintf(err, "Unimplemented mapper: %u, failed to open ROM", cartType);
+        ErrorEmuAndHalt("ROM", err);
         return false;
     }
     mbc->initialize();

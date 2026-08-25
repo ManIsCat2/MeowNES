@@ -43,4 +43,6 @@ extern bool romIsLoaded;
 extern void *globalQTWin;
 extern int hoveredPaletteIndex;
 
+void ErrorEmuAndHalt(const char *title, const char *err);
+
 //extern QTimer cpuTimer;
