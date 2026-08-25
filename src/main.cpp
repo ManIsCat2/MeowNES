@@ -759,14 +759,26 @@ void DrawCHRTile(QImage &img, int destX, int destY, MapperBase *mapper, uint16_t
     }
 }
 
-QImage BuildPatternTableImage(MapperBase *mapper, int table) {
+QImage BuildPatternTableImage(MapperBase *mapper, int table, bool mode8x16) {
     QImage img(128, 128, QImage::Format_RGB32);
     uint16_t baseAddr = (uint16_t)(table == 0 ? 0x0000 : 0x1000);
 
-    for (int ty = 0; ty < 16; ty++) {
-        for (int tx = 0; tx < 16; tx++) {
-            uint8_t tileIndex = (uint8_t)(ty * 16 + tx);
-            DrawCHRTile(img, tx * 8, ty * 8, mapper, baseAddr, tileIndex);
+    if (mode8x16) {
+        for (int ty = 0; ty < 8; ty++) {
+            for (int tx = 0; tx < 16; tx++) {
+                uint8_t topTile = (uint8_t)((ty * 16 + tx) * 2);
+                uint8_t bottomTile = topTile + 1;
+                
+                DrawCHRTile(img, tx * 8, ty * 16, mapper, baseAddr, topTile);
+                DrawCHRTile(img, tx * 8, ty * 16 + 8, mapper, baseAddr, bottomTile);
+            }
+        }
+    } else {
+        for (int ty = 0; ty < 16; ty++) {
+            for (int tx = 0; tx < 16; tx++) {
+                uint8_t tileIndex = (uint8_t)(ty * 16 + tx);
+                DrawCHRTile(img, tx * 8, ty * 8, mapper, baseAddr, tileIndex);
+            }
         }
     }
 
@@ -795,12 +807,13 @@ void ShowPatternViewerDialog(QWidget *parent) {
 
     QDialog *dialog = new QDialog(parent);
     dialog->setWindowTitle("Pattern Table Viewer");
-    dialog->setFixedSize(580, 320); 
+    dialog->setFixedSize(580, 360); 
 
     QVBoxLayout *mainLayout = new QVBoxLayout(dialog);
     QHBoxLayout *tablesLayout = new QHBoxLayout();
 
     QLabel *imgLabels[2] = { nullptr, nullptr };
+    QCheckBox *chk8x16[2] = { nullptr, nullptr };
 
     for (int t = 0; t < 2; t++) {
         QVBoxLayout *colLayout = new QVBoxLayout();
@@ -812,14 +825,22 @@ void ShowPatternViewerDialog(QWidget *parent) {
         imgLabel->setFixedSize(256, 256);
         imgLabels[t] = imgLabel;
 
+        QCheckBox *chk = new QCheckBox("View as 8x16", dialog);
+        chk8x16[t] = chk;
+
         colLayout->addWidget(title);
         colLayout->addWidget(imgLabel, 0, Qt::AlignCenter);
+        colLayout->addWidget(chk, 0, Qt::AlignCenter);
+        
         tablesLayout->addLayout(colLayout);
     }
 
-    auto refresh = [mapper, imgLabels]() {
+    mainLayout->addLayout(tablesLayout);
+
+    auto refresh = [mapper, imgLabels, chk8x16]() {
         for (int t = 0; t < 2; t++) {
-            QImage img = BuildPatternTableImage(mapper, t);
+            bool mode8x16 = chk8x16[t]->isChecked();
+            QImage img = BuildPatternTableImage(mapper, t, mode8x16);
             QPixmap pix = QPixmap::fromImage(img).scaled(256, 256, Qt::KeepAspectRatio, Qt::FastTransformation);
             imgLabels[t]->setPixmap(pix);
         }
@@ -827,11 +848,12 @@ void ShowPatternViewerDialog(QWidget *parent) {
 
     refresh();
 
+    QObject::connect(chk8x16[0], &QCheckBox::toggled, refresh);
+    QObject::connect(chk8x16[1], &QCheckBox::toggled, refresh);
+
     QTimer *autoTimer = new QTimer(dialog);
     QObject::connect(autoTimer, &QTimer::timeout, refresh);
     autoTimer->start(100);
-
-    mainLayout->addLayout(tablesLayout);
 
     dialog->setLayout(mainLayout);
     dialog->exec();

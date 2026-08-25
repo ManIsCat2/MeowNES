@@ -71,6 +71,14 @@ void GbAPU::step(uint32_t cycles) {
         if (noise.timer <= 0) noise.timer = 8;
         remaining4 -= noise.timer;
         noise.timer = (NoiseDivisors[noise.clockDivider] << noise.clockShift);
+
+        uint16_t xorBit = (noise.lfsr & 1) ^ ((noise.lfsr >> 1) & 1);
+        noise.lfsr >>= 1;
+        noise.lfsr |= (xorBit << 14);
+        if (noise.lfsrWidth) {
+            noise.lfsr &= ~(1 << 6);
+            noise.lfsr |= (xorBit << 6);
+        }
     }
     noise.timer -= remaining4;
 
